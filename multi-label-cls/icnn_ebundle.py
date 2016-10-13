@@ -28,6 +28,7 @@ sys.path.append('../lib')
 
 import bibsonomy
 import bundle_entropy
+import util
 
 def main():
     parser = argparse.ArgumentParser()
@@ -37,10 +38,10 @@ def main():
     # parser.add_argument('--testBatchSz', type=int, default=2048)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--layerSizes', type=int, nargs='+', default=[600, 600])
-    parser.add_argument('--noncvx', action='store_true')
     parser.add_argument('--dataset', type=str, choices=['bibtex', 'bookmarks', 'delicious'],
                         default='bibtex')
     parser.add_argument('--valSplit', type=float, default=0)
+    parser.add_argument('--inference_nIter', type=int, default=10)
 
     args = parser.parse_args()
 
@@ -115,37 +116,6 @@ def variable_summaries(var, name=None):
         tf.scalar_summary('min/' + name, tf.reduce_min(var))
         tf.histogram_summary(name, var)
 
-def getW(inSz, outSz, name, norm=True):
-    with tf.variable_scope("W"):
-        stdev = 1./np.sqrt(outSz)
-        v = tf.get_variable(name, (inSz, outSz),
-                            initializer=tf.random_uniform_initializer(-stdev, stdev))
-        variable_summaries(v)
-        if norm:
-            v_sqnorm = tf.reduce_sum(tf.square(v), 0)
-            g = tf.get_variable(name+'.g', (outSz), initializer=tf.constant_initializer(1.0))
-            return tf.matmul(v, tf.diag(tf.div(g, v_sqnorm)))
-        else:
-            return v
-
-def getW_pos(inSz, outSz, name, norm=True):
-    with tf.variable_scope("W_pos"):
-        stdev = 1./np.sqrt(outSz)
-        v = tf.get_variable(name, (inSz, outSz),
-                            initializer=tf.random_uniform_initializer(0, stdev))
-        variable_summaries(v)
-        if norm:
-            v_sqnorm = tf.reduce_sum(tf.square(v), 0)
-            g = tf.get_variable(name+'.g', (outSz), initializer=tf.constant_initializer(1.0))
-            return tf.matmul(v, tf.diag(tf.div(g, v_sqnorm)))
-        else:
-            return v
-
-def getB(outSz, name='b'):
-    v = tf.get_variable(name, outSz, initializer=tf.constant_initializer(0.0))
-    variable_summaries(v)
-    return v
-
 class Model:
     def __init__(self, nFeatures, nLabels, layerSzs, sess):
         self.nFeatures = nFeatures
@@ -188,19 +158,14 @@ class Model:
         for g,v in self.gv_:
             variable_summaries(g, 'gradients/'+v.name)
 
-        self.yBinary_ = tf.select(self.y_ < 0.5, tf.zeros_like(self.y_),
-                                  tf.ones_like(self.y_))
-        self.F1_ = tf.reduce_mean(2*tf_nOnes(tf.mul(self.trueY_, self.yBinary_))/
-                                  (tf_nOnes(self.trueY_) + tf_nOnes(self.yBinary_)))
+        # self.l_yN_ = tf.placeholder(tf.float32, name='l_yN')
+        # tf.scalar_summary('crossEntr', self.l_yN_)
 
-        self.l_yN_ = tf.placeholder(tf.float32, name='l_yN')
-        tf.scalar_summary('crossEntr', self.l_yN_)
+        # self.nBundleIter_ = tf.placeholder(tf.float32, [None], name='nBundleIter')
+        # variable_summaries(self.nBundleIter_)
 
-        self.nBundleIter_ = tf.placeholder(tf.float32, [None], name='nBundleIter')
-        variable_summaries(self.nBundleIter_)
-
-        self.nActive_ = tf.placeholder(tf.float32, [None], name='nActive')
-        variable_summaries(self.nActive_)
+        # self.nActive_ = tf.placeholder(tf.float32, [None], name='nActive')
+        # variable_summaries(self.nActive_)
 
         self.merged = tf.merge_all_summaries()
         self.saver = tf.train.Saver(max_to_keep=1)
@@ -211,7 +176,7 @@ class Model:
         nTrain = trainX.shape[0]
         nTest = valX.shape[0]
 
-        nIter = int(np.ceil(args.nEpoch*nTrain/args.trainBatchSz))
+        nIter = int(args.nEpoch*np.ceil(nTrain/args.trainBatchSz))
 
         trainFields = ['iter', 'f1', 'loss']
         trainF = open(os.path.join(save, 'train.csv'), 'w')
@@ -236,74 +201,7 @@ class Model:
         with open(metaP, 'w') as f:
             json.dump(meta, f, indent=2)
 
-        if not args.noncvx:
-            self.sess.run(self.makeCvx)
-
-        # Scale weights.
-        # tflearn.is_training(True)
-        # I = npr.randint(nTrain, size=10000)
-        # xBatch = trainX[I, :]
-        # yBatch = trainY[I, :]
-        # W_z_zs = [x for x in self.theta_ if 'zu_proj/W' in x.name]
-        # W_z_ys = [x for x in self.theta_ if '_yu/' in x.name]
-        # W_z_us = [x for x in self.theta_ if re.match('z[0-9]*_u/W', x.name) is not None]
-        # b_z = [x for x in self.theta_ if re.match('z[0-9]*_u/b', x.name) is not None]
-        # z_zs, z_ys, z_us = self.sess.run([self.z_zs, self.z_ys, self.z_us],
-        #                                  feed_dict={self.x_: xBatch, self.y_: yBatch})
-        # print("=== Original ===")
-        # new_bzs = []
-        # scale = 0.1
-        # for i in range(self.nLayers+1):
-        #     sz = self.szs[i] if i < self.nLayers else 1
-        #     b_zi_new = np.zeros(sz)
-
-        #     z_ys_i_mean = np.mean(z_ys[i], axis=0)
-        #     z_ys_i_std = np.std(z_ys[i], axis=0)
-        #     print('y.std:', z_ys_i_std[:5])
-        #     # self.sess.run(tf.assign(W_z_ys[i],
-        #     #                         tf.matmul(W_z_ys[i], tf.diag(scale/z_ys_i_std))))
-        #     # b_zi_new -= z_ys_i_mean/z_ys_i_std
-        #     # b_zi_new -= z_ys_i_mean
-
-        #     z_us_i_mean = np.mean(z_us[i], axis=0)
-        #     z_us_i_std = np.std(z_us[i], axis=0)
-        #     print('u.std:', z_us_i_std[:5])
-        #     # self.sess.run(tf.assign(W_z_us[i],
-        #     #                         tf.matmul(W_z_us[i], tf.diag(scale/z_us_i_std))))
-        #     # b_zi_new -= z_us_i_mean/z_us_i_std
-        #     # b_zi_new -= z_us_i_mean
-
-        #     new_bzs.append(b_zi_new)
-        #     if i == 0:
-        #         self.sess.run(tf.assign(b_z[i], new_bzs[i]))
-
-        # for i in range(self.nLayers):
-        #     z_zs, = self.sess.run([self.z_zs],
-        #                          feed_dict={self.x_: xBatch, self.y_: yBatch})
-        #     z_zs_i_mean = np.mean(z_zs[i], axis=0)
-        #     z_zs_i_std = np.std(z_zs[i], axis=0)
-        #     print('z.std:', z_zs_i_std[:5])
-        #     self.sess.run(tf.assign(W_z_zs[i],
-        #                             tf.matmul(W_z_zs[i], tf.diag(scale/z_zs_i_std))))
-        #     new_bzs[i+1] -= z_zs_i_mean/z_zs_i_std
-        #     self.sess.run(tf.assign(b_z[i+1], new_bzs[i+1]))
-
-        # print("=== Scaled ===")
-        # z_zs, z_ys, z_us = self.sess.run([self.z_zs, self.z_ys, self.z_us],
-        #                                  feed_dict={self.x_: xBatch, self.y_: yBatch})
-        # for i in range(self.nLayers+1):
-        #     if i > 0:
-        #         z_zs_i_std = np.std(z_zs[i-1], axis=0)
-        #         print('z.std:', z_zs_i_std[:5])
-
-        #     z_ys_i_std = np.std(z_ys[i], axis=0)
-        #     print('y.std:', z_ys_i_std[:5])
-
-        #     z_us_i_std = np.std(z_us[i], axis=0)
-        #     print('u.std:', z_us_i_std[:5])
-
-        # import IPython; IPython.embed(); sys.exit(-1)
-        # sys.exit(-1)
+        self.sess.run(self.makeCvx)
 
         bestTestF1 = 0.0
         nErrors = 0
@@ -324,26 +222,29 @@ class Model:
 
             y0 = np.full(yBatch.shape, 0.5)
             try:
-                yN, G, h, lam, ys, nIters = bundle_entropy.solveBatch(fg, y0, nIter=10)
+                yN, G, h, lam, ys, nIters = bundle_entropy.solveBatch(
+                    fg, y0, nIter=args.inference_nIter)
             except:
                 print("Warning: Exception in bundle_entropy.solveBatch")
                 nErrors += 1
                 if nErrors > 10:
                     print("More than 10 errors raised, quitting")
-                    sys.exit-(1-)
+                    sys.exit(-1)
                 continue
 
             nActive = [len(Gi) for Gi in G]
             l_yN = crossEntr(yBatch, yN)
-            trainF1 = self.sess.run(self.F1_, feed_dict={self.y_: yN, self.trueY_: yBatch})
+            trainF1 = util.macroF1(yBatch, yN)
 
             fd = self.train_step_fd(args.trainBatchSz, xBatch, yBatch, G, yN, ys, lam)
-            fd[self.l_yN_] = l_yN
-            fd[self.nBundleIter_] = nIters
-            fd[self.nActive_] = nActive
+            # fd[self.l_yN_] = l_yN
+            # fd[self.nBundleIter_] = nIters
+            # fd[self.nActive_] = nActive
             summary, _ = self.sess.run([self.merged, self.train_step], feed_dict=fd)
-            if not args.noncvx and len(self.proj) > 0:
+            if len(self.proj) > 0:
                 self.sess.run(self.proj)
+            else:
+                print("Warning: Not projecting any weights.")
             self.trainWriter.add_summary(summary, i)
 
             trainW.writerow((i, trainF1, l_yN))
@@ -352,15 +253,6 @@ class Model:
             print(" + trainF1: {:0.2f}".format(trainF1))
             print(" + loss: {:0.5e}".format(l_yN))
             print(" + time: {:0.2f} s".format(time.time()-start))
-
-            # if i == 2000:
-            #     tf.get_variable_scope().reuse_variables()
-            #     W = tf.get_variable('W/yu')
-            #     import matplotlib as mpl
-            #     mpl.use('Agg')
-            #     import matplotlib.pyplot as plt
-            #     plt.style.use('bmh')
-            #     import IPython; IPython.embed(); sys.exit(-1)
 
             if i % np.ceil(nTrain/args.trainBatchSz) == 0:
                 print("=== Testing ===")
@@ -371,9 +263,9 @@ class Model:
                     return e, ge
 
                 y0 = np.full(valY.shape, 0.5)
-                yN, G, h, lam, ys, _ = bundle_entropy.solveBatch(fg, y0, nIter=10)
-                testF1 = self.sess.run(self.F1_,
-                    feed_dict={self.y_: yN, self.trueY_: valY})
+                yN, G, h, lam, ys, _ = bundle_entropy.solveBatch(
+                    fg, y0, nIter=args.inference_nIter)
+                testF1 = util.macroF1(valY, yN)
                 l_yN = crossEntr(valY, yN)
                 print(" + testF1: {:0.4f}".format(testF1))
                 testW.writerow((i, testF1, l_yN))
@@ -420,88 +312,6 @@ class Model:
         fd_cs = np.array(fd_cs)
         fd = {self.x_: fd_xs, self.y_: fd_ys, self.v_: fd_vs, self.c_: fd_cs}
         return fd
-
-    def f_shallow(self, x, y, szs, reuse=False):
-        assert(len(szs) == 2)
-        act = tf.nn.relu
-        # act = tf.nn.softplus
-        xy = tf.concat(1, (x, y))
-
-        if reuse:
-            tf.get_variable_scope().reuse_variables()
-
-        # with tf.variable_scope('u0') as s:
-        #     W_x = getW(self.nFeatures, szs[0], 'x')
-        #     b = getB(szs[0])
-        #     u0 = tf.identity(tf.matmul(x, W_x) + b, name='preact')
-        #     tf.histogram_summary(u0.name, u0)
-        #     u0 = act(u0, name='act')
-        #     tf.histogram_summary(u0.name, u0)
-        #     u0 = tflearn.layers.normalization.batch_normalization(u0, reuse=reuse,
-        #                                                         scope=s, name='bn')
-        #     tf.histogram_summary(u0.name, u0)
-
-        # ui = u0
-        # i,j = 0,1
-        # with tf.variable_scope('u'+str(j)) as s:
-        #     W_u = getW(szs[i], szs[j], 'u')
-        #     b = getB(szs[j])
-        #     uj = tf.identity(tf.matmul(ui, W_u) + b, name='preact')
-        #     tf.histogram_summary(uj.name, uj)
-        #     if len(szs) > i+2:
-        #         uj = act(uj, name='act')
-        #         tf.histogram_summary(uj.name, uj)
-        #         uj = tflearn.layers.normalization.batch_normalization(uj, reuse=reuse,
-        #                                                               scope=s, name='bn')
-        #         tf.histogram_summary(uj.name, uj)
-
-        # zSz = 10
-        # with tf.variable_scope('z0'):
-        #     z0 = act(tf.matmul(y, getW(self.nLabels, zSz, 'y')) + getB(zSz))
-        # with tf.variable_scope('z1'):
-        #     z1 = tf.reshape(tf.matmul(z0, getW(zSz, 1, 'z')) + getB(1), [-1])
-
-        # zk = -tf.reduce_sum(tf.mul(x, y), 1)
-
-        return tf.reshape(zk, [-1], name='energies')
-
-    # def f(self, x, y, szs, reuse=False):
-    #     assert(len(szs) == 2)
-    #     act = tf.nn.relu
-    #     # act = tf.nn.softplus
-    #     xy = tf.concat(1, (x, y))
-
-    #     if reuse:
-    #         tf.get_variable_scope().reuse_variables()
-
-    #     with tf.variable_scope('u0') as s:
-    #         u0 = act(tf.matmul(x, getW(self.nFeatures, szs[0], 'x')))
-    #         u0 = tflearn.layers.normalization.batch_normalization(u0, reuse=reuse,
-    #                                                               scope=s, name='bn')
-    #     with tf.variable_scope('u1') as s:
-    #         u1 = tf.matmul(u0, getW(szs[0], szs[1], 'u')) + getB(szs[1])
-
-    #     with tf.variable_scope('z0') as s:
-    #         z0 = act(
-    #             tf.matmul(y, getW(self.nLabels, self.nLabels, 'y')) + \
-    #             getB(self.nLabels)
-    #         )
-
-    #     with tf.variable_scope('z1') as s:
-    #         z1 = tf.add_n((
-    #             tf.matmul(z0, getW_pos(self.nLabels, 1, 'z')),
-    #             tf.matmul(y, getW(self.nLabels, 1, 'y')),
-    #             tf.matmul(tf.mul(y, u1), getW(self.nLabels, 1, 'yu')),
-    #             tf.matmul(
-    #                 tf.mul(z0,
-    #                        tf.matmul(act(u1),
-    #                                  getW_pos(self.nLabels, self.nLabels, 'zu_inner'))),
-    #                 getW_pos(self.nLabels, 1, 'zu')),
-    #         )) + getB(1)
-
-    #     # z1 = tf.matmul(tf.mul(y, x), getW(self.nLabels, 1, 'yu'))
-
-    #     return tf.reshape(z1, [-1], name='energies')
 
     def f(self, x, y, szs, reuse=False):
         assert(len(szs) >= 1)
@@ -576,93 +386,6 @@ class Model:
 
         z = tf.reshape(z, [-1], name='energies')
         return z
-
-    def f_old(self, x, y, szs, reuse=False):
-        assert(len(szs) >= 1)
-        act = tf.nn.relu
-        # act = tf.nn.softplus
-        xy = tf.concat(1, (x, y))
-
-        if reuse:
-            tf.get_variable_scope().reuse_variables()
-
-        with tf.variable_scope('z0') as s:
-            W_xy = getW(self.nXy, szs[0], 'xy')
-            b = getB(szs[0])
-            z0 = tf.identity(tf.matmul(xy, W_xy) + b, name='preact')
-            tf.histogram_summary(z0.name, z0)
-            z0 = act(z0, name='act')
-            tf.histogram_summary(z0.name, z0)
-
-        with tf.variable_scope('u0') as s:
-            W_x = getW(self.nFeatures, szs[0], 'x')
-            b = getB(szs[0])
-            u0 = tf.identity(tf.matmul(x, W_x) + b, name='preact')
-            tf.histogram_summary(u0.name, u0)
-            if len(szs) > 1:
-                u0 = act(u0, name='act')
-                tf.histogram_summary(u0.name, u0)
-                u0 = tflearn.layers.normalization.batch_normalization(u0, reuse=reuse,
-                                                                    scope=s, name='bn')
-                tf.histogram_summary(u0.name, u0)
-
-        zi, ui = z0, u0
-
-        for i in range(len(szs)-1):
-            j = i+1
-            with tf.variable_scope('z'+str(j)) as s:
-                zj_z = tf.matmul(zi, getW_pos(szs[i], szs[j], 'z'))
-                zj_y = tf.matmul(y, getW(self.nLabels, szs[j], 'y'))
-                zj_zu = tf.matmul(
-                    tf.mul(zi, tf.matmul(act(ui), getW_pos(szs[i], szs[i], 'zu_inner'))),
-                    getW_pos(szs[i], szs[j], 'zu'))
-                zj_yu = tf.matmul(
-                    tf.mul(y, tf.matmul(ui, getW(szs[i], self.nLabels, 'yu_inner'))),
-                    getW(self.nLabels, szs[j], 'yu'))
-                b = getB(szs[j])
-                zj = tf.identity(zj_z + zj_y + zj_zu + zj_yu + b, name='preact')
-                tf.histogram_summary(zj.name, zj)
-                zj = act(zj, name='act')
-                tf.histogram_summary(zj.name, zj)
-                # z0 = slim.batch_norm(z0, is_training=True,
-                                     # reuse=reuse, scope=s)
-
-            with tf.variable_scope('u'+str(j)) as s:
-                W_u = getW(szs[i], szs[j], 'u')
-                b = getB(szs[j])
-                uj = tf.identity(tf.matmul(ui, W_u) + b, name='preact')
-                tf.histogram_summary(uj.name, uj)
-                if len(szs) > i+2:
-                    uj = act(uj, name='act')
-                    tf.histogram_summary(uj.name, uj)
-                    uj = tflearn.layers.normalization.batch_normalization(uj, reuse=reuse,
-                                                                        scope=s, name='bn')
-                    tf.histogram_summary(uj.name, uj)
-
-            zi, ui = zj, uj
-
-        i = len(szs)-1
-        j = i+1
-        with tf.variable_scope('z'+str(j)):
-            zj_z = tf.matmul(zi, getW_pos(szs[i], 1, 'z'))
-            zj_u = tf.matmul(ui, getW(szs[i], 1, 'u'))
-            zj_y = tf.matmul(y, getW(self.nLabels, 1, 'y'))
-            zj_zu = tf.matmul(
-                tf.mul(zi, tf.matmul(act(ui), getW_pos(szs[i], szs[i], 'zu_inner'))),
-                getW_pos(szs[i], 1, 'zu'))
-            zj_yu = tf.matmul(
-                tf.mul(y, tf.matmul(ui, getW(szs[i], self.nLabels, 'yu_inner'))),
-                getW(self.nLabels, 1, 'yu'))
-            b = getB(1)
-            zj = zj_z + zj_u + zj_y + zj_zu + zj_yu + b
-            tf.histogram_summary(zj.name, zj)
-
-        return tf.reshape(zj, [-1], name='energies')
-
-
-def tf_nOnes(b):
-    # Must be binary.
-    return tf.reduce_sum(tf.cast(b, tf.int32))
 
 def crossEntrGrad(y, trueY, G):
     k,n = G.shape
