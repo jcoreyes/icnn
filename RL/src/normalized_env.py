@@ -13,6 +13,7 @@ def make_normalized_env(env):
     """ crate a new environment class with actions and states normalized to [-1,1] """
     act_space = env.action_space
     obs_space = env.observation_space
+    #import ipdb; ipdb.set_trace()
     if not type(act_space) == gym.spaces.box.Box:
         raise RuntimeError('Environment with continous action space (i.e. Box) required.')
     if not type(obs_space) == gym.spaces.box.Box:
@@ -49,6 +50,7 @@ def make_normalized_env(env):
             self.reward_b = 0.
 
             # Check and assign transformed spaces
+            #import ipdb; ipdb.set_trace()
             self.observation_space = gym.spaces.Box(self.filter_observation(obs_space.low),
                                                     self.filter_observation(obs_space.high))
             self.action_space = gym.spaces.Box(-np.ones_like(act_space.high),
@@ -59,6 +61,7 @@ def make_normalized_env(env):
             assertEqual(self.filter_action(self.action_space.high), act_space.high)
 
         def filter_observation(self, obs):
+            #print obs, self.obs_b
             return (obs - self.obs_b) / self.obs_k
 
         def filter_action(self, action):
