@@ -8,6 +8,11 @@ flags.DEFINE_integer('bsize', 256, 'minibatch size')
 flags.DEFINE_integer('iter', 1, 'train iters each timestep')
 flags.DEFINE_integer('l1size', 200, '1st layer size')
 flags.DEFINE_integer('l2size', 200, '2nd layer size')
+flags.DEFINE_integer('conv1filter', 4, 'Conv1 filter size')
+flags.DEFINE_integer('conv1numfilters', 32, "Number of conv1 filters")
+flags.DEFINE_integer('conv2filter', 4, 'Conv2 filter size')
+flags.DEFINE_integer('conv2numfilters', 32, "Number of conv2 filters")
+
 flags.DEFINE_integer('rmsize', 500000, 'memory size')
 
 flags.DEFINE_float('tau', 0.01, 'moving average for target network')
@@ -22,6 +27,6 @@ flags.DEFINE_float('lrelu', 0.01, 'leak relu rate')
 
 flags.DEFINE_integer('thread', 1, 'tensorflow threads')
 
-flags.DEFINE_boolean('summary', True, 'use tensorboard log')
+
 
 flags.DEFINE_float('initstd', 0.01, 'weight init std (DDPG uses its own initialization)')

@@ -28,6 +28,7 @@ flags.DEFINE_string('model', 'DDPG', 'reinforcement learning model[DDPG, NAF, IC
 flags.DEFINE_integer('tfseed', 0, 'random seed for tensorflow')
 flags.DEFINE_integer('gymseed', 0, 'random seed for openai gym')
 flags.DEFINE_integer('npseed', 0, 'random seed for numpy')
+flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
 
 if FLAGS.model == 'DDPG':
     import ddpg
@@ -80,8 +81,10 @@ class Experiment(object):
         self.test_timestep = 0
 
         # create normal
-        maze_def = {'maze_string': maze_strings[-2], "floor": 227}
-        self.env = normalized_env.make_normalized_env(Minecraft(maze_def, vision_observation=False, video_dim=(420, 320))) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
+        maze_def = {'type': 'TMaze'}
+        self.env = normalized_env.make_normalized_env(Minecraft(maze_def, grayscale=False,
+                                                                vision_observation=False,
+                                                                video_dim=(320, 240))) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
         tf.set_random_seed(FLAGS.tfseed)
         np.random.seed(FLAGS.npseed)
         #self.env.monitor.start(os.path.join(FLAGS.outdir, 'monitor'), force=FLAGS.force)

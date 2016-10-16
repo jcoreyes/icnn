@@ -57,8 +57,90 @@ base_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 
 </Mission>
 '''
+class Maze():
+    def __init__(self):
+        pass
+    def create_maze_array(self):
+        pass
 
-class MazeGenerator(object):
+class TMaze(Maze):
+    def __init__(self, kwargs, x_bound=10, z_bound=9):
+        self.x_bound = x_bound
+        self.z_bound = z_bound
+        # Coordinate of t junction
+        self.t_coord = (self.z_bound-1, int(self.x_bound / 2.0))
+        self.start = (1, self.t_coord[1])
+        self.end = (self.z_bound-2, 1)
+        self.trap = (self.z_bound-2, self.x_bound-2)
+
+
+    def create_maze_array(self):
+        ''' x is east west and z is north south
+        [['1' '1' '1' '1' '1' '1' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' 's' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' 'e' '0' '0' '0' '0' '0' '0' 'l' '1']
+         ['1' '1' '1' '1' '1' '1' '1' '1' '1' '1']]
+
+        '''
+
+        maze_array = np.chararray((self.z_bound, self.x_bound))
+        maze_array[:] = '1'
+        maze_array[1:self.t_coord[0], self.t_coord[1]] = '0'
+        maze_array[self.z_bound-2, 1:self.x_bound-2] = '0'
+        maze_array[self.start] = 's'
+        maze_array[self.end] = 'e'
+        maze_array[self.trap] = 'l'
+        maze_array[self.trap[0], self.trap[1]+1] = 'r'
+
+        return maze_array
+
+class Platform(Maze):
+    def __init__(self, kwargs, x_bound=10, z_bound=9):
+        self.x_bound = x_bound
+        self.z_bound = z_bound
+        # Coordinate of t junction
+        self.start = (1, self.t_coord[1])
+        self.end = (self.z_bound-2, 1)
+        self.trap = (self.z_bound-2, self.x_bound-2)
+
+
+    def create_maze_array(self):
+        ''' x is east west and z is north south
+        [['1' '1' '1' '1' '1' '1' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' 's' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
+         ['1' 'e' '0' '0' '0' '0' '0' '0' 'l' '1']
+         ['1' '1' '1' '1' '1' '1' '1' '1' '1' '1']]
+
+        '''
+
+        maze_array = np.chararray((self.z_bound, self.x_bound))
+        maze_array[:] = '1'
+        maze_array[1:self.t_coord[0], self.t_coord[1]] = '0'
+        maze_array[self.z_bound-2, 1:self.x_bound-2] = '0'
+        maze_array[self.start] = 's'
+        maze_array[self.end] = 'e'
+        maze_array[self.trap] = 'l'
+        maze_array[self.trap[0], self.trap[1]+1] = 'r'
+
+        return maze_array
+
+def create_maze(maze_def):
+    if maze_def['type'] == 'TMaze':
+        return TMaze(maze_def)
+    else:
+        raise NotImplementedError
+
+class MissionGen(object):
 
 
     def __init__(self):
@@ -80,44 +162,46 @@ class MazeGenerator(object):
         #my_mission.observeGrid(-1, -1, -1, 1, 1, 1, 'grid')
         #my_mission.observeHotBar()
         #my_mission.o
-        # my_mission.forceWorldReset()
+        #my_mission.forceWorldReset()
         return my_mission
 
     def draw_wall(self, mission, x1, x2, z1, z2, height):
         for y in range(self.floor, self.floor + height):
             mission.drawLine(x1, y, z1, x2, y, z2,'stone')
 
-    def create_maze(self, maze_def, reset=False):
-        #reset=True
+    def generate_mission(self, maze_array, reset=False):
         mission = self.base_config()
         if reset:
             mission.forceWorldReset()
-        maze_string = maze_def['maze_string']
-        self.z_bounds = (-2, len(maze_string) + 2)
-        self.x_bounds = (-2, len(maze_string[0]) + 2)
-        for z in range(len(maze_string)):
-            for x in range(len(maze_string[0])):
-                elem = maze_string[z][x]
+        height, width = maze_array.shape
+        self.z_bounds = (-2, height + 2)
+        self.x_bounds = (-2, width + 2)
+        for z in range(height):
+            for x in range(width):
+                elem = maze_array[z, x]
                 if elem == '1':
                     self.draw_wall(mission, x, x, z, z, self.height)
                 elif elem == 's':
-                    mission.startAt(x+0.5, self.floor, z+0.5)
+                    mission.startAt(x, self.floor, z)
                 elif elem == 'l':
                     mission.drawBlock(x, self.floor-1, z, 'lava')
+                elif elem == 'r':
+                    mission.drawLine(x, self.floor, z, x, self.floor + self.end_height, z, 'redstone_block')
                 elif elem == 'e':
                     self.goal_pos = (x+0.5, self.floor, z+0.5)
-                    mission.drawLine(x, self.floor, z, x, self.floor+self.end_height, z, 'redstone_block')
+                    mission.drawLine(x, self.floor, z, x, self.floor+self.end_height, z, 'lapis_block')
                     mission.rewardForReachingPosition(x+0.5, self.floor, z+0.5, self.goal_reward, self.goal_tolerance)
                     mission.endAt(x+0.5, self.floor, z+0.5, self.goal_tolerance)
                     mission.observeDistance(x+0.5, self.floor, z+0.5, 'Goal')
 
-        return mission, self.goal_pos
+        return mission
 
     def test_maze(self):
-        mission = self.create_maze() #MalmoPython.MissionSpec(missionXML, True) #
-        agent = MalmoPython.AgentHost()
-        mission_record_spec =  MalmoPython.MissionRecordSpec()
-        agent.startMission(mission, mission_record_spec)
+        pass
+        #mission = self.create_maze() #MalmoPython.MissionSpec(missionXML, True) #
+        #agent = MalmoPython.AgentHost()
+        #mission_record_spec =  MalmoPython.MissionRecordSpec()
+        #agent.startMission(mission, mission_record_spec)
 
 
 class Minecraft(object):
@@ -130,10 +214,11 @@ class Minecraft(object):
         self.depth = depth
         self.num_parallel = num_parallel
 
-        self.maze_generator = MazeGenerator()
 
-        self.mission, self.goal_pos= self.maze_generator.create_maze(maze_def)
-        self.XGoalPos, self.YGoalPos = self.goal_pos[0], self.goal_pos[2]
+        maze = create_maze(maze_def)
+        self.mission_gen = MissionGen()
+        self.mission = self.mission_gen.generate_mission(maze.create_maze_array())
+        self.XGoalPos, self.YGoalPos = self.mission_gen.goal_pos[0], self.mission_gen.goal_pos[2]
 
         # with open(mission_file, 'r') as f:
         #     print("Loading mission from %s" % mission_file)
@@ -154,8 +239,8 @@ class Minecraft(object):
         self.agent_host = MalmoPython.AgentHost()
         self.agent_host.setObservationsPolicy(MalmoPython.ObservationsPolicy.KEEP_ALL_OBSERVATIONS)
         # self.agent_host.setObservationsPolicy(MalmoPython.ObservationsPolicy.LATEST_OBSERVATION_ONLY)
-        #self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.KEEP_ALL_FRAMES)
-        self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.LATEST_FRAME_ONLY)
+        self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.KEEP_ALL_FRAMES)
+        #self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.LATEST_FRAME_ONLY)
 
         self.mission_record_spec = MalmoPython.MissionRecordSpec()
 
@@ -166,7 +251,7 @@ class Minecraft(object):
             # self._action_set = ["move", "turn", "pitch"]
             # self.action_space = Box(np.array([0, -.5, -.5]), np.array([1, .5, .5]))
             self._action_set = ["move", "turn"]
-            self.action_space = Box(np.array([0, -.5]), np.array([1, .5]))
+            self.action_space = Box(np.array([0, -.5]), np.array([1, 0.5]))
 
         self.num_frames = num_frames
         self.grayscale = grayscale
@@ -176,21 +261,25 @@ class Minecraft(object):
         else:
             self.num_frame_channels = 3
             high = 255
+
+        # Obs keys and bounds
+        x_bounds = self.mission_gen.x_bounds
+        z_bounds = self.mission_gen.z_bounds
+        self.max_dist = np.linalg.norm((x_bounds[-1], z_bounds[-1]))
+        self.minDistanceFromGoal = None
         if self.vision_observation:
             self.observation_space = Box(low=0,
                                           high=high,
                                           shape=(self.num_frames*self.num_frame_channels, self.image_height, self.image_width))
         else:
-            # Obs keys and bounds
-            x_bounds = self.maze_generator.x_bounds
-            z_bounds = self.maze_generator.z_bounds
+
             self.obs_keys = [(u'XPos', x_bounds),
                              (u'ZPos', z_bounds),
                              (u'yaw', (0, 360)),
                              (u'XGoalPos', x_bounds),
                              (u'YGoalPos', z_bounds),
                              (u'DistanceTravelled', (0, 30)),
-                             (u'distanceFromGoal', (0, 10))]
+                             (u'distanceFromGoal', (0, self.max_dist))]
             l_bounds = [key[1][0] for key in self.obs_keys]
             u_bounds = [key[1][1] for key in self.obs_keys]
             self.observation_space = Box(np.array(l_bounds), np.array(u_bounds))
@@ -201,10 +290,14 @@ class Minecraft(object):
         self.terminal = False
 
     def _get_obs(self, world_state):
+        total_reward = 0
+        for reward in world_state.rewards:
+            total_reward += reward.getValue()
+
         if self.vision_observation:
-            if len(world_state.video_frames) < 1:
-                print("No frames, setting obs to 0")
-                return np.zeros(self.observation_space.shape)
+            #if len(world_state.video_frames) < 1:
+            #    print("No frames, setting obs and reward to 0")
+            #    return np.zeros(self.observation_space.shape), 0
 
             frame_concat = []
             for i in range(self.num_frames, 0, -1):
@@ -218,8 +311,18 @@ class Minecraft(object):
                     image_np = np.array(image.resize((self.image_width, self.image_height)))\
                         .transpose(2, 0, 1).reshape(3, self.image_height, self.image_width)
                 frame_concat.append(image_np)
-            return np.concatenate(frame_concat, axis=0)
+
+            # distanceFromGoal = json.loads(world_state.observations[-1].text).get('distanceFromGoal')
+            # if self.minDistanceFromGoal == None:
+            #     self.minDistanceFromGoal = distanceFromGoal
+            # total_reward += distanceFromGoal - self.minDistanceFromGoal
+            #self.minDistanceFromGoal = min(self.minDistanceFromGoal, distanceFromGoal)
+
+            return (np.concatenate(frame_concat, axis=0), total_reward)
         else:
+            #if len(world_state.video_frames) < 1 or len(world_state.observations) < 1:
+            #    print("No frames, setting obs to last state")
+            #    return self.last_obs, total_reward
             frame = world_state.video_frames[-1]
 
             msg = json.loads(world_state.observations[-1].text)
@@ -239,7 +342,8 @@ class Minecraft(object):
                     print("Obs was None", key[0])
                 state.append(float(obs))
             #print state
-            return state
+            # self.last_obs = state
+            return state, total_reward
 
     def _send_command(self, action_str):
         try:
@@ -279,9 +383,6 @@ class Minecraft(object):
     def wait_for_initial_state(self):
         # wait for a valid observation
         world_state = self.agent_host.peekWorldState()
-        # while world_state.is_mission_running and all(e.text == '{}' for e in world_state.observations):
-        #     world_state = self.agent_host.peekWorldState()
-        # wait for a frame to arrive after that
         num_frames_seen = world_state.number_of_video_frames_since_last_state
         #print("Waiting for initial state")
         while world_state.is_mission_running and (len(world_state.video_frames) < self.num_frames
@@ -332,7 +433,7 @@ class Minecraft(object):
         world_state = self.wait_for_initial_state()
         #assert world_state.has_mission_begun and world_state.is_mission_running \
         #       and len(world_state.video_frames) > 0
-        return self._get_obs(world_state)
+        return self._get_obs(world_state)[0]
 
 
 
@@ -342,12 +443,11 @@ class Minecraft(object):
 
         step_info = {}
         #world_state = self.agent_host.getWorldState()
-        total_reward = 0
 
         # Flag is set when mission is ended.
         # Deal with issue where sample that ends mission won't be sampled from replay memory
-        if self.terminal:
-            return self.last_obs, total_reward, True, step_info
+        # if self.terminal:
+        #    return self.last_obs, 0, True, step_info
 
         self._perform_action(action)
 
@@ -362,36 +462,59 @@ class Minecraft(object):
                # world_state.number_of_observations_since_last_state < 1:
             #print("Waiting for frames...")
             time.sleep(0.01)
-            world_state = self.agent_host.getWorldState()
+            world_state = self.agent_host.peekWorldState()
+	if not world_state.is_mission_running:
+	    ob = self.last_obs
+	    total_reward = 0
+            for reward in world_state.rewards:
+                total_reward += reward.getValue()
+	    if total_reward == 0 and self.cum_reward == 0:
+		total_reward = -1
+	    self.cum_reward += total_reward
+            print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
+	else:
 
+	    assert len(world_state.observations) > 0 and len(world_state.video_frames) > 0
+            ob, total_reward = self._get_obs(world_state)
+	    self.last_obs = ob
+	    #if total_reward == 0 and self.cum_reward == 0:
+		#total_reward = -1 
+	    #print total_reward
         # if len(world_state.mission_control_messages) > 0:
         #     for x in world_state.mission_control_messages:
         #         print x.text
 
-        for reward in world_state.rewards:
-            total_reward += reward.getValue()
         #total_reward += 0.1 * self.distance_travelled
         #print self.distance_travelled
+
+
         self.cum_reward += total_reward
 
 
-
+        return ob, total_reward, not world_state.is_mission_running, step_info
+	# Mission has ended
         if not world_state.is_mission_running:
-            print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
+
             #assert total_reward != 0
             # If haven't received any reward then give - reward to time out
             if self.cum_reward == 0:
                 total_reward = TIMEOUT_REWARD
-            self.terminal = True
-            return self.last_obs, total_reward, world_state.is_mission_running, step_info
+                self.cum_reward += total_reward
+            print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
+           # self.terminal = True
+           # self.last_obs = ob
+            #return ob, total_reward, world_state.is_mission_running, step_info
 
         #import ipdb; ipdb.set_trace()
-        ob = self._get_obs(world_state)
-        self.last_obs = ob
+        #ob = self._get_obs(world_state)
+        #self.last_obs = ob
 
-        return ob, total_reward, not world_state.is_mission_running, step_info
 
 
 if __name__ == '__main__':
-    maze_gen = MazeGenerator()
-    maze_gen.test_maze()
+    maze = TMaze(None)
+    mission =  MissionGen().generate_mission(maze.create_maze_array(), reset=True)
+    agent = MalmoPython.AgentHost()
+    mission_record_spec = MalmoPython.MissionRecordSpec()
+    agent.startMission(mission, mission_record_spec)
+    print maze.create_maze_array()

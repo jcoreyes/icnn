@@ -9,20 +9,22 @@ flags.DEFINE_integer('train', 1000, 'training timesteps between testing')
 flags.DEFINE_string('data', '.', 'dir contains outputs of DDPG, NAF and ICNN')
 
 
-folders = [
-    [FLAGS.data + '/DDPG/%d' % i for i in xrange(FLAGS.runs)],
-    [FLAGS.data + '/NAF/%d' % i for i in xrange(FLAGS.runs)],
-    [FLAGS.data + '/ICNN/%d' % i for i in xrange(FLAGS.runs)],
-]
+# folders = [
+#     [FLAGS.data + '/DDPG/%d' % i for i in xrange(FLAGS.runs)],
+#     [FLAGS.data + '/NAF/%d' % i for i in xrange(FLAGS.runs)],
+#     [FLAGS.data + '/ICNN/%d' % i for i in xrange(FLAGS.runs)],
+# ]
+folders = [['../output']]
+
 names = [
-    'DDPG',
-    'NAF',
-    'ICNN',
+    'DDPG'
+#    'NAF',
+#    'ICNN',
 ]
 colors = [
-    'red',
-    'blue',
-    'green'
+    'red'
+#    'blue',
+#    'green'
 ]
 
 
@@ -44,6 +46,7 @@ def get_data(folders, n=100, k=100):
         with open(os.path.join(folder, 'log.txt')) as f:
             lines = f.readlines()
         lines = map(lambda x: map(float, x.split()), lines)
+        print lines
         try:
             x = np.asarray(lines)[:, 0].flatten()
             y = np.asarray(lines)[:, 1].flatten()

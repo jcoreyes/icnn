@@ -41,7 +41,7 @@ class ReplayMemory:
                 # sample index ignore wrapping over buffer
                 i = np.random.randint(0, self.n - 1)
                 # if i-th sample is current one or is terminal: get new index
-                if i != self.i and not self.terminals[i]:
+                if i != self.i:# and not self.terminals[i]:
                     invalid = False
             indices[k] = i
 

@@ -26,6 +26,7 @@ flags.DEFINE_string('model', 'ICNN', 'reinforcement learning model[DDPG, NAF, IC
 flags.DEFINE_integer('tfseed', 0, 'random seed for tensorflow')
 flags.DEFINE_integer('gymseed', 0, 'random seed for openai gym')
 flags.DEFINE_integer('npseed', 0, 'random seed for numpy')
+flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
 
 if FLAGS.model == 'DDPG':
     import ddpg

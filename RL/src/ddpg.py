@@ -7,6 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 import ddpg_nets_dm
+import ddpg_convnets_dm
 from replay_memory import ReplayMemory
 
 flags = tf.app.flags
@@ -20,8 +21,13 @@ class Agent:
     def __init__(self, dimO, dimA):
         dimA = list(dimA)
         dimO = list(dimO)
-
-        nets = ddpg_nets_dm
+        if len(dimO) > 1:
+            assert len(dimO) == 3
+            self.use_conv = True
+            nets = ddpg_convnets_dm
+        else:
+            self.use_conv = False
+            nets = ddpg_nets_dm
 
         tau = FLAGS.tau
         discount = FLAGS.discount
@@ -42,13 +48,20 @@ class Agent:
             gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.1)))
 
         # create tf computational graph
-        #
-        self.theta_p = nets.theta_p(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
-        self.theta_q = nets.theta_q(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
+        if self.use_conv:
+            self.theta_p = nets.theta_p(dimO, dimA, FLAGS.conv1filter, FLAGS.conv1numfilters,
+                                        FLAGS.conv2filter, FLAGS.conv2numfilters, FLAGS.l1size, FLAGS.l2size)
+            self.theta_q = nets.theta_q(dimO, dimA, FLAGS.conv1filter, FLAGS.conv1numfilters,
+                                        FLAGS.conv2filter, FLAGS.conv2numfilters, FLAGS.l1size, FLAGS.l2size)
+        else:
+            self.theta_p = nets.theta_p(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
+            self.theta_q = nets.theta_q(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
+
         self.theta_pt, update_pt = exponential_moving_averages(self.theta_p, tau)
         self.theta_qt, update_qt = exponential_moving_averages(self.theta_q, tau)
-
-        obs = tf.placeholder(tf.float32, [None] + dimO, "obs")
+        input_obs_dim = [None] + dimO
+        #import ipdb; ipdb.set_trace()
+        obs = tf.placeholder(tf.float32, input_obs_dim, "obs")
         act_test = nets.policy(obs, self.theta_p)
 
         # explore
