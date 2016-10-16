@@ -205,10 +205,10 @@ class MissionGen(object):
 
 
 class Minecraft(object):
-    def __init__(self, maze_def, video_dim=(32, 32), image_dim=(32, 32), num_parallel=1, time_limit=30,
+    def __init__(self, maze_def, video_dim=(32, 32), num_parallel=1, time_limit=30,
                  discrete_actions=False, vision_observation=True, depth=False, num_frames=1, grayscale=True):
         self.video_width, self.video_height = video_dim
-        self.image_width, self.image_height = image_dim
+        self.image_width, self.image_height = video_dim
         self.discrete_actions = discrete_actions
         self.vision_observation = vision_observation
         self.depth = depth

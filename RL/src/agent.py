@@ -6,7 +6,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_integer('warmup', 1000, 'time without training but only filling the replay memory')
 flags.DEFINE_integer('bsize', 256, 'minibatch size')
 flags.DEFINE_integer('iter', 1, 'train iters each timestep')
-flags.DEFINE_integer('l1size', 200, '1st layer size')
+flags.DEFINE_integer('l1size', 256, '1st layer size')
 flags.DEFINE_integer('l2size', 200, '2nd layer size')
 flags.DEFINE_integer('conv1filter', 4, 'Conv1 filter size')
 flags.DEFINE_integer('conv1numfilters', 32, "Number of conv1 filters")

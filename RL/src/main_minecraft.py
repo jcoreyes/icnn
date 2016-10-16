@@ -20,7 +20,7 @@ flags.DEFINE_string('env', '', 'gym environment')
 flags.DEFINE_string('outdir', 'output', 'output directory')
 flags.DEFINE_boolean('force', False, 'overwrite existing results')
 flags.DEFINE_integer('train', 1000, 'training timesteps between testing episodes')
-flags.DEFINE_integer('test', 1, 'testing episodes between training timesteps')
+flags.DEFINE_integer('test', 10, 'testing episodes between training timesteps')
 flags.DEFINE_integer('tmax', 1000, 'maxium timesteps each episode')
 flags.DEFINE_integer('total', 1000000, 'total training timesteps')
 flags.DEFINE_float('monitor', 0.01, 'probability of monitoring a test episode')
@@ -29,6 +29,9 @@ flags.DEFINE_integer('tfseed', 0, 'random seed for tensorflow')
 flags.DEFINE_integer('gymseed', 0, 'random seed for openai gym')
 flags.DEFINE_integer('npseed', 0, 'random seed for numpy')
 flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
+flags.DEFINE_boolean('vision', False, 'whether to use vision observations')
+flags.DEFINE_integer('width', 64, 'width of video obs')
+flags.DEFINE_integer('height', 64, 'height of video obs')
 
 if FLAGS.model == 'DDPG':
     import ddpg
@@ -83,8 +86,8 @@ class Experiment(object):
         # create normal
         maze_def = {'type': 'TMaze'}
         self.env = normalized_env.make_normalized_env(Minecraft(maze_def, grayscale=False,
-                                                                vision_observation=False,
-                                                                video_dim=(320, 240))) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
+                                                                vision_observation=FLAGS.vision,
+                                                                video_dim=(FLAGS.height, FLAGS.width))) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
         tf.set_random_seed(FLAGS.tfseed)
         np.random.seed(FLAGS.npseed)
         #self.env.monitor.start(os.path.join(FLAGS.outdir, 'monitor'), force=FLAGS.force)
