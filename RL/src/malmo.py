@@ -9,8 +9,10 @@ from PIL import Image
 from time import strftime
 import json
 
+
 def make(mission_file):
     return Minecraft(mission_file)
+
 
 GOAL_REWARD = 10
 DEATH_REWARD = -10
@@ -57,22 +59,25 @@ base_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 
 </Mission>
 '''
+
+
 class Maze():
     def __init__(self):
         pass
+
     def create_maze_array(self):
         pass
+
 
 class TMaze(Maze):
     def __init__(self, kwargs, x_bound=10, z_bound=9):
         self.x_bound = x_bound
         self.z_bound = z_bound
         # Coordinate of t junction
-        self.t_coord = (self.z_bound-1, int(self.x_bound / 2.0))
+        self.t_coord = (self.z_bound - 1, int(self.x_bound / 2.0))
         self.start = (1, self.t_coord[1])
-        self.end = (self.z_bound-2, 1)
-        self.trap = (self.z_bound-2, self.x_bound-2)
-
+        self.end = (self.z_bound - 2, 1)
+        self.trap = (self.z_bound - 2, self.x_bound - 2)
 
     def create_maze_array(self):
         ''' x is east west and z is north south
@@ -91,23 +96,22 @@ class TMaze(Maze):
         maze_array = np.chararray((self.z_bound, self.x_bound))
         maze_array[:] = '1'
         maze_array[1:self.t_coord[0], self.t_coord[1]] = '0'
-        maze_array[self.z_bound-2, 1:self.x_bound-2] = '0'
+        maze_array[self.z_bound - 2, 1:self.x_bound - 2] = '0'
         maze_array[self.start] = 's'
         maze_array[self.end] = 'e'
         maze_array[self.trap] = 'l'
-        maze_array[self.trap[0], self.trap[1]+1] = 'r'
+        maze_array[self.trap[0], self.trap[1] + 1] = 'r'
 
         return maze_array
 
+
 class Platform(Maze):
-    def __init__(self, kwargs, x_bound=10, z_bound=9):
+    def __init__(self, kwargs, x_bound=11, z_bound=10):
         self.x_bound = x_bound
         self.z_bound = z_bound
         # Coordinate of t junction
-        self.start = (1, self.t_coord[1])
-        self.end = (self.z_bound-2, 1)
-        self.trap = (self.z_bound-2, self.x_bound-2)
-
+        self.start = (4, 2)
+        self.end = (-5, -5)
 
     def create_maze_array(self):
         ''' x is east west and z is north south
@@ -124,25 +128,28 @@ class Platform(Maze):
         '''
 
         maze_array = np.chararray((self.z_bound, self.x_bound))
-        maze_array[:] = '1'
-        maze_array[1:self.t_coord[0], self.t_coord[1]] = '0'
-        maze_array[self.z_bound-2, 1:self.x_bound-2] = '0'
+        maze_array[:] = '0'
+        maze_array[:2, :] = 'l'
+        maze_array[-2:, :] = 'l'
+        maze_array[:, :2] = 'l'
+        maze_array[:, -2:] = 'l'
+
         maze_array[self.start] = 's'
         maze_array[self.end] = 'e'
-        maze_array[self.trap] = 'l'
-        maze_array[self.trap[0], self.trap[1]+1] = 'r'
 
         return maze_array
+
 
 def create_maze(maze_def):
     if maze_def['type'] == 'TMaze':
         return TMaze(maze_def)
+    if maze_def['type'] == 'Platform':
+        return Platform(maze_def)
     else:
         raise NotImplementedError
 
+
 class MissionGen(object):
-
-
     def __init__(self):
         self.floor = 227
         self.height = 3
@@ -155,19 +162,19 @@ class MissionGen(object):
         my_mission = MalmoPython.MissionSpec(base_xml, False)
         my_mission.requestVideo(640, 480)
         my_mission.timeLimitInSeconds(20)
-        #my_mission.allowAllChatCommands()
-        #my_mission.allowAllInventoryCommands()
+        # my_mission.allowAllChatCommands()
+        # my_mission.allowAllInventoryCommands()
         my_mission.setTimeOfDay(6000, True)
-        #my_mission.observeChat()
-        #my_mission.observeGrid(-1, -1, -1, 1, 1, 1, 'grid')
-        #my_mission.observeHotBar()
-        #my_mission.o
-        #my_mission.forceWorldReset()
+        # my_mission.observeChat()
+        # my_mission.observeGrid(-1, -1, -1, 1, 1, 1, 'grid')
+        # my_mission.observeHotBar()
+        # my_mission.o
+        # my_mission.forceWorldReset()
         return my_mission
 
     def draw_wall(self, mission, x1, x2, z1, z2, height):
         for y in range(self.floor, self.floor + height):
-            mission.drawLine(x1, y, z1, x2, y, z2,'stone')
+            mission.drawLine(x1, y, z1, x2, y, z2, 'stone')
 
     def generate_mission(self, maze_array, reset=False):
         mission = self.base_config()
@@ -184,28 +191,29 @@ class MissionGen(object):
                 elif elem == 's':
                     mission.startAt(x, self.floor, z)
                 elif elem == 'l':
-                    mission.drawBlock(x, self.floor-1, z, 'lava')
+                    mission.drawBlock(x, self.floor - 1, z, 'lava')
                 elif elem == 'r':
                     mission.drawLine(x, self.floor, z, x, self.floor + self.end_height, z, 'redstone_block')
                 elif elem == 'e':
-                    self.goal_pos = (x+0.5, self.floor, z+0.5)
-                    mission.drawLine(x, self.floor, z, x, self.floor+self.end_height, z, 'lapis_block')
-                    mission.rewardForReachingPosition(x+0.5, self.floor, z+0.5, self.goal_reward, self.goal_tolerance)
-                    mission.endAt(x+0.5, self.floor, z+0.5, self.goal_tolerance)
-                    mission.observeDistance(x+0.5, self.floor, z+0.5, 'Goal')
+                    self.goal_pos = (x + 0.5, self.floor, z + 0.5)
+                    mission.drawLine(x, self.floor, z, x, self.floor + self.end_height, z, 'lapis_block')
+                    mission.rewardForReachingPosition(x + 0.5, self.floor, z + 0.5, self.goal_reward,
+                                                      self.goal_tolerance)
+                    mission.endAt(x + 0.5, self.floor, z + 0.5, self.goal_tolerance)
+                    mission.observeDistance(x + 0.5, self.floor, z + 0.5, 'Goal')
 
         return mission
 
     def test_maze(self):
         pass
-        #mission = self.create_maze() #MalmoPython.MissionSpec(missionXML, True) #
-        #agent = MalmoPython.AgentHost()
-        #mission_record_spec =  MalmoPython.MissionRecordSpec()
-        #agent.startMission(mission, mission_record_spec)
+        # mission = self.create_maze() #MalmoPython.MissionSpec(missionXML, True) #
+        # agent = MalmoPython.AgentHost()
+        # mission_record_spec =  MalmoPython.MissionRecordSpec()
+        # agent.startMission(mission, mission_record_spec)
 
 
 class Minecraft(object):
-    def __init__(self, maze_def, video_dim=(32, 32), num_parallel=1, time_limit=30,
+    def __init__(self, maze_def, reset, video_dim=(32, 32), num_parallel=1, time_limit=30,
                  discrete_actions=False, vision_observation=True, depth=False, num_frames=1, grayscale=True):
         self.video_width, self.video_height = video_dim
         self.image_width, self.image_height = video_dim
@@ -214,20 +222,19 @@ class Minecraft(object):
         self.depth = depth
         self.num_parallel = num_parallel
 
-
         maze = create_maze(maze_def)
         self.mission_gen = MissionGen()
-        self.mission = self.mission_gen.generate_mission(maze.create_maze_array())
+        self.mission = self.mission_gen.generate_mission(maze.create_maze_array(), reset=reset)
         self.XGoalPos, self.YGoalPos = self.mission_gen.goal_pos[0], self.mission_gen.goal_pos[2]
 
         # with open(mission_file, 'r') as f:
         #     print("Loading mission from %s" % mission_file)
         #     mission_xml = f.read()
         #     self.mission = MalmoPython.MissionSpec(mission_xml, True)
-        self.mission.requestVideo(self.video_width, self.video_height)
+        self.mission.requestVideo(self.video_height, self.video_width)
         self.mission.observeRecentCommands()
         self.mission.allowAllContinuousMovementCommands()
-        #self.mission.timeLimitInSeconds(time_limit)
+        # self.mission.timeLimitInSeconds(time_limit)
 
         if self.num_parallel > 1:
             self.client_pool = MalmoPython.ClientPool()
@@ -235,12 +242,11 @@ class Minecraft(object):
                 port = 10000 + i
                 self.client_pool.add(MalmoPython.ClientInfo("127.0.0.1", port))
 
-
         self.agent_host = MalmoPython.AgentHost()
         self.agent_host.setObservationsPolicy(MalmoPython.ObservationsPolicy.KEEP_ALL_OBSERVATIONS)
         # self.agent_host.setObservationsPolicy(MalmoPython.ObservationsPolicy.LATEST_OBSERVATION_ONLY)
         self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.KEEP_ALL_FRAMES)
-        #self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.LATEST_FRAME_ONLY)
+        # self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.LATEST_FRAME_ONLY)
 
         self.mission_record_spec = MalmoPython.MissionRecordSpec()
 
@@ -251,7 +257,7 @@ class Minecraft(object):
             # self._action_set = ["move", "turn", "pitch"]
             # self.action_space = Box(np.array([0, -.5, -.5]), np.array([1, .5, .5]))
             self._action_set = ["move", "turn"]
-            self.action_space = Box(np.array([0, -.5]), np.array([1, 0.5]))
+            self.action_space = Box(np.array([-1, -.5]), np.array([1, 0.5]))
 
         self.num_frames = num_frames
         self.grayscale = grayscale
@@ -269,8 +275,9 @@ class Minecraft(object):
         self.minDistanceFromGoal = None
         if self.vision_observation:
             self.observation_space = Box(low=0,
-                                          high=high,
-                                          shape=(self.num_frames*self.num_frame_channels, self.image_height, self.image_width))
+                                         high=high,
+                                         shape=(self.num_frames * self.num_frame_channels, self.image_height,
+                                                self.image_width))
         else:
 
             self.obs_keys = [(u'XPos', x_bounds),
@@ -283,19 +290,20 @@ class Minecraft(object):
             l_bounds = [key[1][0] for key in self.obs_keys]
             u_bounds = [key[1][1] for key in self.obs_keys]
             self.observation_space = Box(np.array(l_bounds), np.array(u_bounds))
-        #self._horizon = env.spec.timestep_limit
+        # self._horizon = env.spec.timestep_limit
         self.last_obs = None
         self.cum_reward = 0
         self.distance_travelled = 0
         self.terminal = False
 
+
     def _get_obs(self, world_state):
-        total_reward = 0
+        total_reward = -.1
         for reward in world_state.rewards:
             total_reward += reward.getValue()
 
         if self.vision_observation:
-            #if len(world_state.video_frames) < 1:
+            # if len(world_state.video_frames) < 1:
             #    print("No frames, setting obs and reward to 0")
             #    return np.zeros(self.observation_space.shape), 0
 
@@ -307,20 +315,24 @@ class Minecraft(object):
                     image = image.convert('L')
                     image_np = np.array(image).reshape(1, self.image_height, self.image_width)
                 else:
-                #gray_scale = image.convert('LA')
-                    image_np = np.array(image.resize((self.image_width, self.image_height)))\
+                    # gray_scale = image.convert('LA')
+                    image_np = np.array(image.resize((self.image_width, self.image_height))) \
                         .transpose(2, 0, 1).reshape(3, self.image_height, self.image_width)
                 frame_concat.append(image_np)
 
-            # distanceFromGoal = json.loads(world_state.observations[-1].text).get('distanceFromGoal')
-            # if self.minDistanceFromGoal == None:
-            #     self.minDistanceFromGoal = distanceFromGoal
-            # total_reward += distanceFromGoal - self.minDistanceFromGoal
-            #self.minDistanceFromGoal = min(self.minDistanceFromGoal, distanceFromGoal)
+
+            reward_distance_from_goal = True
+            if reward_distance_from_goal:
+                distanceFromGoal = json.loads(world_state.observations[-1].text).get('distanceFromGoal')
+                if self.minDistanceFromGoal == None:
+                    self.minDistanceFromGoal = distanceFromGoal
+                if distanceFromGoal < self.minDistanceFromGoal:
+                    total_reward += (self.minDistanceFromGoal - distanceFromGoal)
+                    self.minDistanceFromGoal = distanceFromGoal
 
             return (np.concatenate(frame_concat, axis=0), total_reward)
         else:
-            #if len(world_state.video_frames) < 1 or len(world_state.observations) < 1:
+            # if len(world_state.video_frames) < 1 or len(world_state.observations) < 1:
             #    print("No frames, setting obs to last state")
             #    return self.last_obs, total_reward
             frame = world_state.video_frames[-1]
@@ -329,7 +341,7 @@ class Minecraft(object):
             state = []
             for index, key in enumerate(self.obs_keys):
                 if key[0] == 'yaw':
-                    obs = getattr(frame, 'yaw') % 360 # Yaw is cumulative so need to take mod
+                    obs = getattr(frame, 'yaw') % 360  # Yaw is cumulative so need to take mod
                 elif key[0] == u'DistanceTravelled':
                     obs = msg.get(key[0]) - self.lastDistanceTravelled
                     self.distance_travelled = obs
@@ -341,7 +353,7 @@ class Minecraft(object):
                 if obs is None:
                     print("Obs was None", key[0])
                 state.append(float(obs))
-            #print state
+            # print state
             # self.last_obs = state
             return state, total_reward
 
@@ -356,13 +368,11 @@ class Minecraft(object):
             action = self._action_set[action]
             self._send_command(action)
         else:
-            #print(zip(self._action_set, action.tolist()))
+            # print(zip(self._action_set, action.tolist()))
             for action_name, val in zip(self._action_set, action.tolist()):
-                self._send_command('%s %f' %(action_name, val))
+                self._send_command('%s %f' % (action_name, val))
 
-
-
-    #@property
+    # @property
     # def observation_space(self):
     #     return self._observation_space
     #
@@ -372,10 +382,10 @@ class Minecraft(object):
     #     return self.action_space
 
 
-    #@property
+    # @property
     def horizon(self):
         raise NotImplementedError
-        #return self._horizon
+        # return self._horizon
 
     def render(self):
         raise NotImplementedError
@@ -384,10 +394,11 @@ class Minecraft(object):
         # wait for a valid observation
         world_state = self.agent_host.peekWorldState()
         num_frames_seen = world_state.number_of_video_frames_since_last_state
-        #print("Waiting for initial state")
+        # print("Waiting for initial state")
         while world_state.is_mission_running and (len(world_state.video_frames) < self.num_frames
-                or len(world_state.observations) < 1
-                or all(e.text == '{}' for e in world_state.observations)):#world_state.number_of_video_frames_since_last_state == num_frames_seen:
+                                                  or len(world_state.observations) < 1
+                                                  or all(e.text == '{}' for e in
+                                                         world_state.observations)):  # world_state.number_of_video_frames_since_last_state == num_frames_seen:
             world_state = self.agent_host.peekWorldState()
             time.sleep(0.1)
             sys.stdout.write('.')
@@ -402,13 +413,14 @@ class Minecraft(object):
         self.total_steps = 0
         self.cum_reward = 0
         self.terminal = False
+        self.minDistanceFromGoal = None
         # Try starting mission
         max_retries = 3
         for retry in range(max_retries):
             try:
                 if self.num_parallel > 1:
                     self.agent_host.startMission(self.mission, self.client_pool,
-                                             self.mission_record_spec, 0, strftime("%Y-%m-%d %H:%M:%S"))
+                                                 self.mission_record_spec, 0, strftime("%Y-%m-%d %H:%M:%S"))
                 else:
                     self.agent_host.startMission(self.mission, self.mission_record_spec)
                 break
@@ -428,21 +440,18 @@ class Minecraft(object):
             time.sleep(0.1)
             world_state = self.agent_host.peekWorldState()
             for error in world_state.errors:
-                print("Error:%s" %error.text)
+                print("Error:%s" % error.text)
 
         world_state = self.wait_for_initial_state()
-        #assert world_state.has_mission_begun and world_state.is_mission_running \
+        # assert world_state.has_mission_begun and world_state.is_mission_running \
         #       and len(world_state.video_frames) > 0
         return self._get_obs(world_state)[0]
-
-
 
     def step(self, action):
         self.total_steps += 1
 
-
         step_info = {}
-        #world_state = self.agent_host.getWorldState()
+        # world_state = self.agent_host.getWorldState()
 
         # Flag is set when mission is ended.
         # Deal with issue where sample that ends mission won't be sampled from replay memory
@@ -453,67 +462,65 @@ class Minecraft(object):
 
         time.sleep(.02)
         world_state = self.agent_host.getWorldState()
-        #import ipdb; ipdb.set_trace()
-        #print world_state.number_of_video_frames_since_last_state
-        #print world_state.number_of_observations_since_last_state
+        # import ipdb; ipdb.set_trace()
+        # print world_state.number_of_video_frames_since_last_state
+        # print world_state.number_of_observations_since_last_state
         while world_state.is_mission_running and \
                 (world_state.number_of_video_frames_since_last_state < self.num_frames or
-                    len(world_state.observations) < 1): # and \
-               # world_state.number_of_observations_since_last_state < 1:
-            #print("Waiting for frames...")
+                         len(world_state.observations) < 1):  # and \
+            # world_state.number_of_observations_since_last_state < 1:
+            # print("Waiting for frames...")
             time.sleep(0.01)
             world_state = self.agent_host.peekWorldState()
-	if not world_state.is_mission_running:
-	    ob = self.last_obs
-	    total_reward = 0
+        if not world_state.is_mission_running:
+            ob = self.last_obs
+            total_reward = 0
             for reward in world_state.rewards:
                 total_reward += reward.getValue()
-	    if total_reward == 0 and self.cum_reward == 0:
-		total_reward = -1
-	    self.cum_reward += total_reward
+            if total_reward == 0 and self.cum_reward == 0:
+                total_reward = -1
+            self.cum_reward += total_reward
             print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
-	else:
+        else:
 
-	    assert len(world_state.observations) > 0 and len(world_state.video_frames) > 0
+            assert len(world_state.observations) > 0 and len(world_state.video_frames) > 0
             ob, total_reward = self._get_obs(world_state)
-	    self.last_obs = ob
-	    #if total_reward == 0 and self.cum_reward == 0:
-		#total_reward = -1 
-	    #print total_reward
+            self.last_obs = ob
+            # if total_reward == 0 and self.cum_reward == 0:
+        # total_reward = -1
+        # print total_reward
         # if len(world_state.mission_control_messages) > 0:
         #     for x in world_state.mission_control_messages:
         #         print x.text
 
-        #total_reward += 0.1 * self.distance_travelled
-        #print self.distance_travelled
+        # total_reward += 0.1 * self.distance_travelled
+        # print self.distance_travelled
 
 
         self.cum_reward += total_reward
 
-
         return ob, total_reward, not world_state.is_mission_running, step_info
-	# Mission has ended
-        if not world_state.is_mission_running:
-
-            #assert total_reward != 0
-            # If haven't received any reward then give - reward to time out
-            if self.cum_reward == 0:
-                total_reward = TIMEOUT_REWARD
-                self.cum_reward += total_reward
-            print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
-           # self.terminal = True
-           # self.last_obs = ob
-            #return ob, total_reward, world_state.is_mission_running, step_info
-
-        #import ipdb; ipdb.set_trace()
-        #ob = self._get_obs(world_state)
-        #self.last_obs = ob
-
+        # Mission has ended
+        # if not world_state.is_mission_running:
+        #
+        #     # assert total_reward != 0
+        #     # If haven't received any reward then give - reward to time out
+        #     if self.cum_reward == 0:
+        #         total_reward = TIMEOUT_REWARD
+        #         self.cum_reward += total_reward
+        #     print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
+        #     # self.terminal = True
+        #     # self.last_obs = ob
+        #     # return ob, total_reward, world_state.is_mission_running, step_info
+        #
+        #     # import ipdb; ipdb.set_trace()
+        #     # ob = self._get_obs(world_state)
+        #     # self.last_obs = ob
 
 
 if __name__ == '__main__':
-    maze = TMaze(None)
-    mission =  MissionGen().generate_mission(maze.create_maze_array(), reset=True)
+    maze = Platform(None)
+    mission = MissionGen().generate_mission(maze.create_maze_array(), reset=True)
     agent = MalmoPython.AgentHost()
     mission_record_spec = MalmoPython.MissionRecordSpec()
     agent.startMission(mission, mission_record_spec)

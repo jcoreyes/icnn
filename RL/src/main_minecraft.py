@@ -29,9 +29,14 @@ flags.DEFINE_integer('tfseed', 0, 'random seed for tensorflow')
 flags.DEFINE_integer('gymseed', 0, 'random seed for openai gym')
 flags.DEFINE_integer('npseed', 0, 'random seed for numpy')
 flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
+
+# Env specific
 flags.DEFINE_boolean('vision', False, 'whether to use vision observations')
 flags.DEFINE_integer('width', 64, 'width of video obs')
 flags.DEFINE_integer('height', 64, 'height of video obs')
+flags.DEFINE_string('maze', 'Platform', 'type of maze')
+flags.DEFINE_boolean('reset', False, 'whether to recreate minecraft env each time')
+
 
 if FLAGS.model == 'DDPG':
     import ddpg
@@ -84,8 +89,8 @@ class Experiment(object):
         self.test_timestep = 0
 
         # create normal
-        maze_def = {'type': 'TMaze'}
-        self.env = normalized_env.make_normalized_env(Minecraft(maze_def, grayscale=False,
+        maze_def = {'type': FLAGS.maze}
+        self.env = normalized_env.make_normalized_env(Minecraft(maze_def, reset=FLAGS.reset, grayscale=False,
                                                                 vision_observation=FLAGS.vision,
                                                                 video_dim=(FLAGS.height, FLAGS.width))) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
         tf.set_random_seed(FLAGS.tfseed)

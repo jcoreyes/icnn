@@ -38,6 +38,7 @@ class Agent:
         outheta = FLAGS.outheta
         ousigma = FLAGS.ousigma
 
+        print FLAGS
         # init replay memory
         self.rm = ReplayMemory(FLAGS.rmsize, dimO, dimA)
         # start tf session

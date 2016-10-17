@@ -9,9 +9,10 @@ flags.DEFINE_integer('iter', 1, 'train iters each timestep')
 flags.DEFINE_integer('l1size', 256, '1st layer size')
 flags.DEFINE_integer('l2size', 200, '2nd layer size')
 flags.DEFINE_integer('conv1filter', 4, 'Conv1 filter size')
-flags.DEFINE_integer('conv1numfilters', 32, "Number of conv1 filters")
+flags.DEFINE_integer('conv1numfilters', 16, "Number of conv1 filters")
 flags.DEFINE_integer('conv2filter', 4, 'Conv2 filter size')
 flags.DEFINE_integer('conv2numfilters', 32, "Number of conv2 filters")
+flags.DEFINE_boolean('batchnorm', False, 'Use batch norm after conv layers')
 
 flags.DEFINE_integer('rmsize', 500000, 'memory size')
 
