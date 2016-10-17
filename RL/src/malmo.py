@@ -13,7 +13,6 @@ import json
 def make(mission_file):
     return Minecraft(mission_file)
 
-
 GOAL_REWARD = 10
 DEATH_REWARD = -10
 TIMEOUT_REWARD = -1
