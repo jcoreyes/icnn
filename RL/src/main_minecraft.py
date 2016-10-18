@@ -9,6 +9,8 @@ import numpy as np
 import tensorflow as tf
 
 import agent
+import sys
+import subprocess
 import normalized_env
 import runtime_env
 from malmo import Minecraft
@@ -106,6 +108,9 @@ class Experiment(object):
 
         self.agent = Agent(dimO, dimA=dimA)
         simple_log_file = open(os.path.join(FLAGS.outdir, 'log.txt'), 'w')
+        # Save command line arg
+        git_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'])
+        print >> simple_log_file, " ".join(sys.argv[:] + [git_hash])
 
         while self.train_timestep < FLAGS.total:
 
@@ -117,7 +122,7 @@ class Experiment(object):
                 self.test_timestep += timestep
             avg_reward = np.mean(reward_list)
             print('Average test return {} after {} timestep of training.'.format(avg_reward, self.train_timestep))
-            print >> simple_log_file, "{}\t{}".format(self.train_timestep, avg_reward)
+            print >> simple_log_file, "{}\t{}\t{}\t{}\t{}".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list))
 
             # train
             reward_list = []
