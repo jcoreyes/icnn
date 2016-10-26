@@ -60,7 +60,7 @@ base_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 '''
 
 
-class Maze():
+class Maze(object):
     def __init__(self):
         pass
 
@@ -103,6 +103,16 @@ class TMaze(Maze):
 
         return maze_array
 
+class TMazeLava(TMaze):
+    def __init__(self, kwargs, x_bound=10, z_bound=9):
+        super(self.__class__, self).__init__(kwargs, x_bound, z_bound)
+        self.trap2 = (self.z_bound / 2, self.x_bound / 2)
+
+    def create_maze_array(self):
+
+        maze_array = super(TMazeLava, self).create_maze_array()
+        maze_array[self.trap2] = 'l'
+        return maze_array
 
 class Platform(Maze):
     def __init__(self, kwargs, x_bound=11, z_bound=10):
@@ -140,9 +150,12 @@ class Platform(Maze):
 
 
 def create_maze(maze_def):
-    if maze_def['type'] == 'TMaze':
+    maze_type = maze_def['type']
+    if maze_type == 'TMaze':
         return TMaze(maze_def)
-    if maze_def['type'] == 'Platform':
+    if maze_type == 'TMazeLava':
+        return TMazeLava(maze_def)
+    if maze_type == 'Platform':
         return Platform(maze_def)
     else:
         raise NotImplementedError
@@ -461,9 +474,7 @@ class Minecraft(object):
 
         time.sleep(.02)
         world_state = self.agent_host.getWorldState()
-        # import ipdb; ipdb.set_trace()
-        # print world_state.number_of_video_frames_since_last_state
-        # print world_state.number_of_observations_since_last_state
+
         while world_state.is_mission_running and \
                 (world_state.number_of_video_frames_since_last_state < self.num_frames or
                          len(world_state.observations) < 1):  # and \
@@ -518,7 +529,7 @@ class Minecraft(object):
 
 
 if __name__ == '__main__':
-    maze = Platform(None)
+    maze = create_maze({'type':sys.argv[1]})
     mission = MissionGen().generate_mission(maze.create_maze_array(), reset=True)
     agent = MalmoPython.AgentHost()
     mission_record_spec = MalmoPython.MissionRecordSpec()

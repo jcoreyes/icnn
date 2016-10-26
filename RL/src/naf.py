@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 import naf_nets_dm
+import naf_convnets_dm
 from replay_memory import ReplayMemory
 
 flags = tf.app.flags
@@ -25,7 +26,10 @@ class Agent:
         outheta = FLAGS.outheta
         ousigma = FLAGS.ousigma
 
-        nets = naf_nets_dm
+        if FLAGS.vision:
+            nets = naf_convnets_dm
+        else:
+            nets = naf_nets_dm
 
         # init replay memory
         self.rm = ReplayMemory(FLAGS.rmsize, dimO, dimA)

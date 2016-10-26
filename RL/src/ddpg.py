@@ -63,7 +63,9 @@ class Agent:
         input_obs_dim = [None] + dimO
         #import ipdb; ipdb.set_trace()
         obs = tf.placeholder(tf.float32, input_obs_dim, "obs")
-        act_test = nets.policy(obs, self.theta_p)
+        is_training = tf.placeholder(tf.bool, [], name='is_training')
+        act_test = nets.policy(obs, self.theta_p, is_training)
+
 
         # explore
         noise_init = tf.zeros([1] + dimA)
@@ -73,7 +75,7 @@ class Agent:
         act_expl = act_test + noise
 
         # test
-        q = nets.qfunction(obs, act_test, self.theta_q)
+        q = nets.qfunction(obs, act_test, self.theta_q, is_training)
         # training
 
         # q optimization
@@ -83,8 +85,8 @@ class Agent:
         term2 = tf.placeholder(tf.bool, [FLAGS.bsize], "term2")
 
         # policy loss
-        act_train_policy = nets.policy(obs, self.theta_p)
-        q_train_policy = nets.qfunction(obs, act_train_policy, self.theta_q)
+        act_train_policy = nets.policy(obs, self.theta_p, is_training, reuse=True)
+        q_train_policy = nets.qfunction(obs, act_train_policy, self.theta_q, is_training, reuse=True)
         meanq = tf.reduce_mean(q_train_policy, 0)
         wd_p = tf.add_n([pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
         loss_p = -meanq + wd_p
@@ -96,10 +98,10 @@ class Agent:
             train_p = tf.group(update_pt)
 
         # q
-        q_train = nets.qfunction(obs, act_train, self.theta_q)
+        q_train = nets.qfunction(obs, act_train, self.theta_q, is_training, reuse=True)
         # q targets
-        act2 = nets.policy(obs2, theta=self.theta_pt)
-        q2 = nets.qfunction(obs2, act2, theta=self.theta_qt)
+        act2 = nets.policy(obs2, self.theta_pt, is_training, reuse=True)
+        q2 = nets.qfunction(obs2, act2, self.theta_qt, is_training, reuse=True)
         q_target = tf.stop_gradient(tf.select(term2, rew, rew + discount * q2))
         # q_target = tf.stop_gradient(rew + discount * q2)
         # q loss
@@ -122,10 +124,10 @@ class Agent:
 
         # tf functions
         with self.sess.as_default():
-            self._act_test = Fun(obs, act_test)
-            self._act_expl = Fun(obs, act_expl)
+            self._act_test = Fun([obs, is_training], act_test)
+            self._act_expl = Fun([obs, is_training], act_expl)
             self._reset = Fun([], self.ou_reset)
-            self._train = Fun([obs, act_train, rew, obs2, term2], [train_p, train_q, loss_q], summary_list, summary_writer)
+            self._train = Fun([obs, act_train, rew, obs2, term2, is_training], [train_p, train_q, loss_q], summary_list, summary_writer)
 
         # initialize tf variables
         self.saver = tf.train.Saver(max_to_keep=1)
@@ -145,7 +147,7 @@ class Agent:
 
     def act(self, test=False):
         obs = np.expand_dims(self.observation, axis=0)
-        action = self._act_test(obs) if test else self._act_expl(obs)
+        action = self._act_test(obs, False) if test else self._act_expl(obs, True)
         action = np.clip(action, -1, 1)
         self.action = np.atleast_1d(np.squeeze(action, axis=0))  # TODO: remove this hack
         return self.action
@@ -166,7 +168,7 @@ class Agent:
 
     def train(self):
         obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
-        _, _, loss = self._train(obs, act, rew, ob2, term2, log=FLAGS.summary, global_step=self.t)
+        _, _, loss = self._train(obs, act, rew, ob2, term2, True, log=FLAGS.summary, global_step=self.t)
         return loss
 
     def __del__(self):

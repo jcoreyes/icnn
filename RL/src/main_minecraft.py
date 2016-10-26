@@ -24,7 +24,7 @@ flags.DEFINE_boolean('force', False, 'overwrite existing results')
 flags.DEFINE_integer('train', 1000, 'training timesteps between testing episodes')
 flags.DEFINE_integer('test', 10, 'testing episodes between training timesteps')
 flags.DEFINE_integer('tmax', 1000, 'maxium timesteps each episode')
-flags.DEFINE_integer('total', 1000000, 'total training timesteps')
+flags.DEFINE_integer('total', 3e5, 'total training timesteps')
 flags.DEFINE_float('monitor', 0.01, 'probability of monitoring a test episode')
 flags.DEFINE_string('model', 'DDPG', 'reinforcement learning model[DDPG, NAF, ICNN]')
 flags.DEFINE_integer('tfseed', 0, 'random seed for tensorflow')
@@ -112,6 +112,7 @@ class Experiment(object):
         git_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'])
         print >> simple_log_file, " ".join(sys.argv[:] + [git_hash])
 
+        avg_rewards = []
         while self.train_timestep < FLAGS.total:
 
             # test
@@ -121,8 +122,13 @@ class Experiment(object):
                 reward_list.append(reward)
                 self.test_timestep += timestep
             avg_reward = np.mean(reward_list)
+            avg_rewards.append(avg_reward)
             print('Average test return {} after {} timestep of training.'.format(avg_reward, self.train_timestep))
             print >> simple_log_file, "{}\t{}\t{}\t{}\t{}".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list))
+            # Stopping criterion
+            if self.train_timestep > 5e5 and len(avg_rewards) > 10 and np.var(avg_rewards) < 1:
+                break
+
 
             # train
             reward_list = []
