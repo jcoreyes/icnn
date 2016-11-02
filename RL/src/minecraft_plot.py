@@ -23,7 +23,7 @@ plt.ylabel('Reward')
 
 def get_data(log_file):
     with open(log_file) as f:
-        lines = [line.split() for line in f.readlines()[1:]]
+        lines = [line.split() for line in f.readlines()[2:]]
         data = np.asfarray(lines)
         steps, avg_r, std_r, min_r, max_r = [data[:, i] for i in range(5)]
     return steps, avg_r, std_r, min_r, max_r

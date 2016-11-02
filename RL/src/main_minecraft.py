@@ -24,7 +24,7 @@ flags.DEFINE_boolean('force', False, 'overwrite existing results')
 flags.DEFINE_integer('train', 1000, 'training timesteps between testing episodes')
 flags.DEFINE_integer('test', 10, 'testing episodes between training timesteps')
 flags.DEFINE_integer('tmax', 1000, 'maxium timesteps each episode')
-flags.DEFINE_integer('total', 3e5, 'total training timesteps')
+flags.DEFINE_integer('total', 2e4, 'total training timesteps')
 flags.DEFINE_float('monitor', 0.01, 'probability of monitoring a test episode')
 flags.DEFINE_string('model', 'DDPG', 'reinforcement learning model[DDPG, NAF, ICNN]')
 flags.DEFINE_integer('tfseed', 0, 'random seed for tensorflow')
@@ -33,12 +33,12 @@ flags.DEFINE_integer('npseed', 0, 'random seed for numpy')
 flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
 
 # Env specific
-flags.DEFINE_boolean('vision', False, 'whether to use vision observations')
-flags.DEFINE_integer('width', 64, 'width of video obs')
-flags.DEFINE_integer('height', 64, 'height of video obs')
-flags.DEFINE_string('maze', 'Platform', 'type of maze')
+flags.DEFINE_boolean('vision', True, 'whether to use vision observations')
+flags.DEFINE_integer('width', 32, 'width of video obs')
+flags.DEFINE_integer('height', 32, 'height of video obs')
+flags.DEFINE_string('maze', 'TMaze', 'type of maze')
 flags.DEFINE_boolean('reset', False, 'whether to recreate minecraft env each time')
-
+flags.DEFINE_integer('num_parallel', 1, 'how many servers to use at same time.')
 
 if FLAGS.model == 'DDPG':
     import ddpg
@@ -94,7 +94,8 @@ class Experiment(object):
         maze_def = {'type': FLAGS.maze}
         self.env = normalized_env.make_normalized_env(Minecraft(maze_def, reset=FLAGS.reset, grayscale=False,
                                                                 vision_observation=FLAGS.vision,
-                                                                video_dim=(FLAGS.height, FLAGS.width))) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
+                                                                video_dim=(FLAGS.height, FLAGS.width),
+                                                                num_parallel=FLAGS.num_parallel)) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
         tf.set_random_seed(FLAGS.tfseed)
         np.random.seed(FLAGS.npseed)
         #self.env.monitor.start(os.path.join(FLAGS.outdir, 'monitor'), force=FLAGS.force)
@@ -107,10 +108,10 @@ class Experiment(object):
         #pprint.pprint(self.env.spec.__dict__)
 
         self.agent = Agent(dimO, dimA=dimA)
-        simple_log_file = open(os.path.join(FLAGS.outdir, 'log.txt'), 'w')
+        simple_log_file = open(os.path.join(FLAGS.outdir, 'log.txt'), 'a')
         # Save command line arg
         git_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'])
-        print >> simple_log_file, " ".join(sys.argv[:] + [git_hash])
+        simple_log_file.write(" ".join(sys.argv[:] + [git_hash]))
 
         avg_rewards = []
         while self.train_timestep < FLAGS.total:
@@ -124,7 +125,9 @@ class Experiment(object):
             avg_reward = np.mean(reward_list)
             avg_rewards.append(avg_reward)
             print('Average test return {} after {} timestep of training.'.format(avg_reward, self.train_timestep))
-            print >> simple_log_file, "{}\t{}\t{}\t{}\t{}".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list))
+            #print >> simple_log_file, "{}\t{}\t{}\t{}\t{}".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list))
+            simple_log_file.write("{}\t{}\t{}\t{}\t{}\n".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list)))
+            simple_log_file.flush()
             # Stopping criterion
             if self.train_timestep > 5e5 and len(avg_rewards) > 10 and np.var(avg_rewards) < 1:
                 break
@@ -168,4 +171,5 @@ def main():
     Experiment().run()
 
 if __name__ == '__main__':
+    #main()
     runtime_env.run(main, FLAGS.outdir)

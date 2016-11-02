@@ -268,8 +268,8 @@ class Minecraft(object):
         else:
             # self._action_set = ["move", "turn", "pitch"]
             # self.action_space = Box(np.array([0, -.5, -.5]), np.array([1, .5, .5]))
-            self._action_set = ["move", "turn"]
-            self.action_space = Box(np.array([-1, -.5]), np.array([1, 0.5]))
+            self._action_set = ["move", "turn", "jump"]
+            self.action_space = Box(np.array([-1, -.5, -1]), np.array([1, 0.5, 1]))
 
         self.num_frames = num_frames
         self.grayscale = grayscale
@@ -307,6 +307,7 @@ class Minecraft(object):
         self.cum_reward = 0
         self.distance_travelled = 0
         self.terminal = False
+        self.jump = 0
 
 
     def _get_obs(self, world_state):
@@ -382,7 +383,12 @@ class Minecraft(object):
         else:
             # print(zip(self._action_set, action.tolist()))
             for action_name, val in zip(self._action_set, action.tolist()):
-                self._send_command('%s %f' % (action_name, val))
+                if action_name == 'jump':
+                    if val >= 0:
+                        self.jump = 1
+                        self._send_command('jump 1')
+                else:
+                    self._send_command('%s %f' % (action_name, val))
 
     # @property
     # def observation_space(self):
@@ -469,7 +475,9 @@ class Minecraft(object):
         # Deal with issue where sample that ends mission won't be sampled from replay memory
         # if self.terminal:
         #    return self.last_obs, 0, True, step_info
-
+        if self.jump == 1:
+            self._send_command(('jump 0'))
+            self.jump = 0
         self._perform_action(action)
 
         time.sleep(.02)
@@ -496,9 +504,7 @@ class Minecraft(object):
             assert len(world_state.observations) > 0 and len(world_state.video_frames) > 0
             ob, total_reward = self._get_obs(world_state)
             self.last_obs = ob
-            # if total_reward == 0 and self.cum_reward == 0:
-        # total_reward = -1
-        # print total_reward
+
         # if len(world_state.mission_control_messages) > 0:
         #     for x in world_state.mission_control_messages:
         #         print x.text
@@ -510,22 +516,6 @@ class Minecraft(object):
         self.cum_reward += total_reward
 
         return ob, total_reward, not world_state.is_mission_running, step_info
-        # Mission has ended
-        # if not world_state.is_mission_running:
-        #
-        #     # assert total_reward != 0
-        #     # If haven't received any reward then give - reward to time out
-        #     if self.cum_reward == 0:
-        #         total_reward = TIMEOUT_REWARD
-        #         self.cum_reward += total_reward
-        #     print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
-        #     # self.terminal = True
-        #     # self.last_obs = ob
-        #     # return ob, total_reward, world_state.is_mission_running, step_info
-        #
-        #     # import ipdb; ipdb.set_trace()
-        #     # ob = self._get_obs(world_state)
-        #     # self.last_obs = ob
 
 
 if __name__ == '__main__':
