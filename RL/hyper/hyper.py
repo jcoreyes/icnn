@@ -7,7 +7,7 @@ from multiprocessing import Pool
 
 
 hyper_param = {
-'batchnorm': (True, False),
+'batchnorm': (True),
 'rate': (0.1, 0.01, 0.001, 0.0001),
 'prate': (0.001, 0.0001, 0.00001),
 'outheta':(0.0, 0.1, 0.15, 0.30, 0.45),

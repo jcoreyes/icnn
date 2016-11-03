@@ -24,6 +24,10 @@ def conv(inputT, filter_w, filter_b, strides, padding, is_training, reuse, scope
     h = tf.nn.relu(tf.nn.conv2d(inputT, filter_w, strides=strides, padding=padding) + filter_b, name=name)
     if FLAGS.batchnorm:
         h = batch_norm(h, is_training=is_training, updates_collections=None, scope=scope, reuse=reuse)
+        #try:
+        #    h = batch_norm(h, is_training=is_training, updates_collections=None, scope=scope, reuse=reuse)
+        #except ValueError:
+        #    h = batch_norm(h, is_training=is_training, updates_collections=None, scope=scope, reuse=None)
     return h
 
 def theta_p(dimO, dimA, conv1filter, conv1numfilters, conv2filter, conv2numfilters, l1, l2):

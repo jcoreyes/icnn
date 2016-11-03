@@ -15,7 +15,89 @@ FLAGS = flags.FLAGS
 
 
 # DDPG Agent
-#
+class Actor():
+    def __init__(self, use_conv, nets, dimO, dimA):
+        if use_conv:
+            self.theta_p = nets.theta_p(dimO, dimA, FLAGS.conv1filter, FLAGS.conv1numfilters,
+                                        FLAGS.conv2filter, FLAGS.conv2numfilters, FLAGS.l1size, FLAGS.l2size)
+
+        else:
+            self.theta_p = nets.theta_p(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
+        self.theta_pt, self.update_pt = exponential_moving_averages(self.theta_p, FLAGS.tau)
+
+    def compute_loss(self, nets, obs, dimA, is_training, critic, sess):
+        # Policy loss
+        act_train_policy = nets.policy(obs, self.theta_p, is_training, reuse=None)
+        q_train_policy = nets.qfunction(obs, act_train_policy, critic.theta_q, is_training, reuse=None)
+        meanq = tf.reduce_mean(q_train_policy, 0)
+        wd_p = tf.add_n([FLAGS.pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
+        loss_p = -meanq + wd_p
+
+        # Policy optimization
+        optim_p = tf.train.AdamOptimizer(learning_rate=FLAGS.prate)
+        grads_and_vars_p = optim_p.compute_gradients(loss_p, var_list=self.theta_p)
+        optimize_p = optim_p.apply_gradients(grads_and_vars_p)
+        with tf.control_dependencies([optimize_p]):
+            self.train_p = tf.group(self.update_pt)
+
+        # Action explore
+        self.act_test = nets.policy(obs, self.theta_p, is_training, reuse=True)
+
+        # explore
+        noise_init = tf.zeros([1] + dimA)
+        noise_var = tf.Variable(noise_init)
+        self.ou_reset = noise_var.assign(noise_init)
+        noise = noise_var.assign_sub((FLAGS.outheta) * noise_var - tf.random_normal(dimA, stddev=FLAGS.ousigma))
+        self.act_expl = self.act_test + noise
+
+        # Create functions for execution
+        with sess.as_default():
+            self._act_test = Fun([obs, is_training], self.act_test)
+            self._act_expl = Fun([obs, is_training], self.act_expl)
+            self._reset = Fun([], self.ou_reset)
+
+
+
+    def act(self, obs, test):
+        if test:
+            return self._act_test(obs, False)
+        else:
+            return self._act_expl(obs, True)
+
+    def reset(self):
+        self._reset()
+
+class Critic():
+    def __init__(self, use_conv, nets, dimO, dimA):
+        if use_conv:
+            self.theta_q = nets.theta_q(dimO, dimA, FLAGS.conv1filter, FLAGS.conv1numfilters,
+                                        FLAGS.conv2filter, FLAGS.conv2numfilters, FLAGS.l1size, FLAGS.l2size)
+        else:
+            self.theta_q = nets.theta_q(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
+        self.theta_qt, self.update_qt = exponential_moving_averages(self.theta_q, FLAGS.tau)
+
+    def compute_loss(self, nets, obs, is_training, act_train, rew, obs2, term2, actor):
+        q_train = nets.qfunction(obs, act_train, self.theta_q, is_training, reuse=True)
+        # q targets
+        act2 = nets.policy(obs2, actor.theta_pt, is_training, reuse=True)
+        q2 = nets.qfunction(obs2, act2, self.theta_qt, is_training, reuse=True)
+        q_target = tf.stop_gradient(tf.select(term2, rew, rew + FLAGS.discount * q2))
+        # q_target = tf.stop_gradient(rew + FLAGS.discount * q2)
+
+        # q loss
+        td_error = q_train - q_target
+        ms_td_error = tf.reduce_mean(tf.square(td_error), 0)
+        wd_q = tf.add_n([FLAGS.l2norm * tf.nn.l2_loss(var) for var in self.theta_q])  # weight decay
+        self.loss_q = ms_td_error + wd_q
+
+        # q optimization
+        optim_q = tf.train.AdamOptimizer(learning_rate=FLAGS.rate)
+        grads_and_vars_q = optim_q.compute_gradients(self.loss_q, var_list=self.theta_q)
+        optimize_q = optim_q.apply_gradients(grads_and_vars_q)
+        with tf.control_dependencies([optimize_q]):
+            self.train_q = tf.group(self.update_qt)
+
+
 class Agent:
 
     def __init__(self, dimO, dimA):
@@ -29,16 +111,6 @@ class Agent:
             self.use_conv = False
             nets = ddpg_nets_dm
 
-        tau = FLAGS.tau
-        discount = FLAGS.discount
-        pl2norm = FLAGS.pl2norm
-        l2norm = FLAGS.l2norm
-        plearning_rate = FLAGS.prate
-        learning_rate = FLAGS.rate
-        outheta = FLAGS.outheta
-        ousigma = FLAGS.ousigma
-
-        print FLAGS
         # init replay memory
         self.rm = ReplayMemory(FLAGS.rmsize, dimO, dimA)
         # start tf session
@@ -48,86 +120,34 @@ class Agent:
             allow_soft_placement=True,
             gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.1)))
 
-        # create tf computational graph
-        if self.use_conv:
-            self.theta_p = nets.theta_p(dimO, dimA, FLAGS.conv1filter, FLAGS.conv1numfilters,
-                                        FLAGS.conv2filter, FLAGS.conv2numfilters, FLAGS.l1size, FLAGS.l2size)
-            self.theta_q = nets.theta_q(dimO, dimA, FLAGS.conv1filter, FLAGS.conv1numfilters,
-                                        FLAGS.conv2filter, FLAGS.conv2numfilters, FLAGS.l1size, FLAGS.l2size)
-        else:
-            self.theta_p = nets.theta_p(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
-            self.theta_q = nets.theta_q(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
 
-        self.theta_pt, update_pt = exponential_moving_averages(self.theta_p, tau)
-        self.theta_qt, update_qt = exponential_moving_averages(self.theta_q, tau)
         input_obs_dim = [None] + dimO
-        #import ipdb; ipdb.set_trace()
+
         obs = tf.placeholder(tf.float32, input_obs_dim, "obs")
         is_training = tf.placeholder(tf.bool, [], name='is_training')
-        act_test = nets.policy(obs, self.theta_p, is_training)
-
-
-        # explore
-        noise_init = tf.zeros([1] + dimA)
-        noise_var = tf.Variable(noise_init)
-        self.ou_reset = noise_var.assign(noise_init)
-        noise = noise_var.assign_sub((outheta) * noise_var - tf.random_normal(dimA, stddev=ousigma))
-        act_expl = act_test + noise
-
-        # test
-        q = nets.qfunction(obs, act_test, self.theta_q, is_training)
-        # training
-
-        # q optimization
         act_train = tf.placeholder(tf.float32, [FLAGS.bsize] + dimA, "act_train")
         rew = tf.placeholder(tf.float32, [FLAGS.bsize], "rew")
         obs2 = tf.placeholder(tf.float32, [FLAGS.bsize] + dimO, "obs2")
         term2 = tf.placeholder(tf.bool, [FLAGS.bsize], "term2")
 
-        # policy loss
-        act_train_policy = nets.policy(obs, self.theta_p, is_training, reuse=True)
-        q_train_policy = nets.qfunction(obs, act_train_policy, self.theta_q, is_training, reuse=True)
-        meanq = tf.reduce_mean(q_train_policy, 0)
-        wd_p = tf.add_n([pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
-        loss_p = -meanq + wd_p
-        # policy optimization
-        optim_p = tf.train.AdamOptimizer(learning_rate=plearning_rate)
-        grads_and_vars_p = optim_p.compute_gradients(loss_p, var_list=self.theta_p)
-        optimize_p = optim_p.apply_gradients(grads_and_vars_p)
-        with tf.control_dependencies([optimize_p]):
-            train_p = tf.group(update_pt)
+        self.actor = Actor(self.use_conv, nets, dimO, dimA)
+        self.critic = Critic(self.use_conv, nets, dimO, dimA)
 
-        # q
-        q_train = nets.qfunction(obs, act_train, self.theta_q, is_training, reuse=True)
-        # q targets
-        act2 = nets.policy(obs2, self.theta_pt, is_training, reuse=True)
-        q2 = nets.qfunction(obs2, act2, self.theta_qt, is_training, reuse=True)
-        q_target = tf.stop_gradient(tf.select(term2, rew, rew + discount * q2))
-        # q_target = tf.stop_gradient(rew + discount * q2)
-        # q loss
-        td_error = q_train - q_target
-        ms_td_error = tf.reduce_mean(tf.square(td_error), 0)
-        wd_q = tf.add_n([l2norm * tf.nn.l2_loss(var) for var in self.theta_q])  # weight decay
-        loss_q = ms_td_error + wd_q
-        # q optimization
-        optim_q = tf.train.AdamOptimizer(learning_rate=learning_rate)
-        grads_and_vars_q = optim_q.compute_gradients(loss_q, var_list=self.theta_q)
-        optimize_q = optim_q.apply_gradients(grads_and_vars_q)
-        with tf.control_dependencies([optimize_q]):
-            train_q = tf.group(update_qt)
+        self.actor.compute_loss(nets, obs, dimA, is_training, self.critic, self.sess)
+        self.critic.compute_loss(nets, obs, is_training, act_train, rew, obs2, term2, self.actor)
 
         summary_writer = tf.train.SummaryWriter(os.path.join(FLAGS.outdir, 'board'), self.sess.graph)
         summary_list = []
-        summary_list.append(tf.scalar_summary('Qvalue', tf.reduce_mean(q_train)))
-        summary_list.append(tf.scalar_summary('loss', ms_td_error))
+        # summary_list.append(tf.scalar_summary('Qvalue', tf.reduce_mean(q_train)))
+        # summary_list.append(tf.scalar_summary('loss', ms_td_error))
         summary_list.append(tf.scalar_summary('reward', tf.reduce_mean(rew)))
 
         # tf functions
         with self.sess.as_default():
-            self._act_test = Fun([obs, is_training], act_test)
-            self._act_expl = Fun([obs, is_training], act_expl)
-            self._reset = Fun([], self.ou_reset)
-            self._train = Fun([obs, act_train, rew, obs2, term2, is_training], [train_p, train_q, loss_q], summary_list, summary_writer)
+
+            self._train = Fun([obs, act_train, rew, obs2, term2, is_training],
+                              [self.actor.train_p, self.critic.train_q, self.critic.loss_q],
+                              summary_list, summary_writer)
 
         # initialize tf variables
         self.saver = tf.train.Saver(max_to_keep=1)
@@ -142,12 +162,12 @@ class Agent:
         self.t = 0  # global training time (number of observations)
 
     def reset(self, obs):
-        self._reset()
+        self.actor.reset()
         self.observation = obs  # initial observation
 
     def act(self, test=False):
         obs = np.expand_dims(self.observation, axis=0)
-        action = self._act_test(obs, False) if test else self._act_expl(obs, True)
+        action = self.actor.act(obs, test)
         action = np.clip(action, -1, 1)
         self.action = np.atleast_1d(np.squeeze(action, axis=0))  # TODO: remove this hack
         return self.action

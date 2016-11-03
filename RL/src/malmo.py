@@ -268,8 +268,12 @@ class Minecraft(object):
         else:
             # self._action_set = ["move", "turn", "pitch"]
             # self.action_space = Box(np.array([0, -.5, -.5]), np.array([1, .5, .5]))
-            self._action_set = ["move", "turn", "jump"]
-            self.action_space = Box(np.array([-1, -.5, -1]), np.array([1, 0.5, 1]))
+            self._action_set = [("move", (-1, 1)),
+                                ("turn", (-0.5, 0.5))]
+                                #("jump", (-1, 1))]
+            lower_bound = np.asarray([x[1][0] for x in self._action_set])
+            upper_bound = np.asarray([x[1][1] for x in self._action_set])
+            self.action_space = Box(lower_bound, upper_bound)
 
         self.num_frames = num_frames
         self.grayscale = grayscale
@@ -383,6 +387,7 @@ class Minecraft(object):
         else:
             # print(zip(self._action_set, action.tolist()))
             for action_name, val in zip(self._action_set, action.tolist()):
+                action_name = action_name[0]
                 if action_name == 'jump':
                     if val >= 0:
                         self.jump = 1
