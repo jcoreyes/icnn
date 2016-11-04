@@ -42,7 +42,7 @@ def theta_p(dimO, dimA, conv1filter, conv1numfilters, conv2filter, conv2numfilte
                 tf.Variable(tf.random_uniform([dimA], -3e-3, 3e-3), name='2b')]
 
 
-def policy(obs, theta, is_training, reuse=False, name='policy'):
+def policy(obs, theta, is_training, reuse=False, name='policy', l1_act=tf.nn.tanh):
     with tf.variable_op_scope([obs], name, name):
         h0 = tf.identity(obs, name='h0-obs')
         h0r = tf.reshape(h0, [-1, height, width, num_channels])
@@ -50,7 +50,7 @@ def policy(obs, theta, is_training, reuse=False, name='policy'):
         h2 = conv(h1, theta[2], theta[3], strides2, padding, is_training, reuse, name + 'bn2', 'conv2')
         h2_flat = tf.reshape(h2, [-1, flat_dim])
         h3 = tf.nn.relu(tf.matmul(h2_flat, theta[4]) + theta[5], name='h1')
-        action = tf.nn.tanh(tf.matmul(h3, theta[6]) + theta[7], name='h2')
+        action = l1_act(tf.matmul(h3, theta[6]) + theta[7], name='h2')
         #h5 = tf.identity(tf.matmul(h4, theta[6]) + theta[7], name='h3')
         #action = tf.nn.tanh(h3, name='h4-action')
         return action

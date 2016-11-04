@@ -9,7 +9,7 @@ import tensorflow as tf
 import ddpg_nets_dm
 import ddpg_convnets_dm
 from replay_memory import ReplayMemory
-from ddpg import Actor, Critic, Agent, Fun
+from ddpg import Actor, Critic, Agent, Fun, exponential_moving_averages
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
@@ -17,26 +17,48 @@ FLAGS = flags.FLAGS
 # DDPG Agent
 
 class HyperOptionsActor(Actor):
-    def __init__(self, use_conv, nets, dimO, dimA, scope='hyperactor'):
-        super(HyperOptionsActor, self).__init__(use_conv, nets, dimO, dimA, scope)
-        self.actors = [Actor(use_conv, nets, dimO, dimA) for _ in range(FLAGS.num_options)]
+    def __init__(self, use_conv, nets, dimO, dimA, obs, obs2, is_training,
+                 sess, scope='hyperactor'):
+        self.actors = []
+        with tf.variable_scope(scope):
+            for i in range(FLAGS.num_options):
+                actor = Actor(use_conv, nets, dimO, dimA, obs, obs2, is_training,
+                              sess, scope='actor%d' % i)
+                self.actors.append(actor)
 
-    def compute_options(self, obs, nets, is_training, reuse):
+        super(HyperOptionsActor, self).__init__(use_conv, nets, dimO, [FLAGS.num_options], obs, obs2,
+                                                is_training, sess, scope)
+
+    def _create_policy_ops(self, obs, obs2, is_training):
         with tf.variable_scope(self.scope):
-            options_prob = nets.policy(obs, self.theta_p, is_training, reuse=reuse)
-        options = [actor.act_train_policy for actor in self.actors]
-        return options, options_prob
+            # Will be used by critic to compute policy gradient
+            self.train_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=None, l1_act=tf.nn.softmax)
+            self.test_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=True, l1_act=tf.nn.softmax)
+            self.explore_policy = self.test_policy #+ self._compute_noise()
 
-    def compute_loss(self, nets, obs, dimA, is_training, critic, sess):
+            self.options2 = self.nets.policy(obs2, self.theta_pt, is_training, reuse=True, l1_act=tf.nn.softmax)
+            self.act2 = gather_cols(tf.concat(1, [actor.act2 for actor in self.actors]),
+                                    tf.to_int32(tf.argmax(self.options2, 0)))
+            # Action explore
+            options_explore = tf.concat(1, [actor.explore_policy for actor in self.actors])
+            # options, options_prob = self.compute_options(obs, nets, is_training, reuse=True)
+            self.act_expl = gather_cols(options_explore, tf.to_int32(tf.argmax(self.test_policy, 0)))
+            self.act_test = self.act_expl
+
+    def _create_policy_funs(self, obs, sess, is_training):
+        # Create functions for execution
+        with sess.as_default():
+            self._act_test = Fun([obs, is_training], self.act_test)
+            self._act_expl = Fun([obs, is_training], self.act_expl)
+
+    def compute_loss(self, critic, obs, is_training):
         for i, actor in enumerate(self.actors):
-            with tf.variable_scope('actor%d/' %i):
-                actor.compute_loss(nets, obs, dimA, is_training, critic, sess)
+            actor.compute_loss(critic, obs, is_training)
 
-        # Policy loss
-        options, options_prob = self.compute_options(obs, nets, is_training, reuse=None)
-        q_values = tf.pack([actor.q_train_policy for actor in self.actors], 1)
+        # Q value using each option
+        self.q_values = tf.pack([actor.q_train_policy for actor in self.actors], 1)
 
-        weighted_q_values = tf.reduce_mean(tf.mul(options_prob, q_values), 1)
+        weighted_q_values = tf.reduce_mean(tf.mul(self.train_policy, self.q_values), 1)
         meanq = tf.reduce_mean(weighted_q_values, 0) #[tf.reduce_mean(q_value, 0) for q_value in q_values]
 
         wd_p = tf.add_n([FLAGS.pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
@@ -51,86 +73,32 @@ class HyperOptionsActor(Actor):
 
         self.train_p = [self.train_hyper_p] + [actor.train_p for actor in self.actors]
 
-
-        # Action explore
-        with tf.variable_scope(self.scope):
-            options_prob = nets.policy(obs, self.theta_p, is_training, reuse=True)
-        options = tf.concat(1, [actor.act_expl for actor in self.actors])
-        #options, options_prob = self.compute_options(obs, nets, is_training, reuse=True)
-        self.act_expl = gather_cols(options, tf.to_int32(tf.argmax(options_prob, 0)))
-        self.act_test = self.act_expl
-
-        # Create functions for execution
-        with sess.as_default():
-            self._act_test = Fun([obs, is_training], self.act_test)
-            self._act_expl = Fun([obs, is_training], self.act_expl)
-
     def reset(self):
         for actor in self.actors:
             actor._reset()
 
+
+    def get_summary(self):
+        self.summary_list.append(tf.histogram_summary('options_prob', self.explore_policy))
+        for i, actor in enumerate(self.actors):
+            self.summary_list.append(tf.histogram_summary('actor_%d_action' %i, actor.explore_policy))
+
+        return self.summary_list
+
+    def get_train_outputs(self):
+        return self.train_p
+
 class OptionsAgent(Agent):
     def __init__(self, dimO, dimA):
-        dimA = list(dimA)
-        dimO = list(dimO)
-        if len(dimO) > 1:
-            assert len(dimO) == 3
-            self.use_conv = True
-            nets = ddpg_convnets_dm
-        else:
-            self.use_conv = False
-            nets = ddpg_nets_dm
+        super(OptionsAgent, self).__init__(dimO, dimA)
 
-        # init replay memory
-        self.rm = ReplayMemory(FLAGS.rmsize, dimO, dimA)
-        # start tf session
-        self.sess = tf.Session(config=tf.ConfigProto(
-            inter_op_parallelism_threads=FLAGS.thread,
-            log_device_placement=False,
-            allow_soft_placement=True,
-            gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.1)))
+    def setup_actor_critic(self, nets, dimO, dimA, obs, obs2, is_training, rew, term2, act_train):
+        self.actor = HyperOptionsActor(self.use_conv, nets, dimO, dimA, obs, obs2, is_training,
+                           self.sess, scope='actor')
+        self.critic = Critic(self.use_conv, nets, dimO, dimA, obs, obs2, rew, term2, is_training,
+                             act_train, self.actor, scope='critic')
 
-
-        input_obs_dim = [None] + dimO
-
-        obs = tf.placeholder(tf.float32, input_obs_dim, "obs")
-        is_training = tf.placeholder(tf.bool, [], name='is_training')
-        act_train = tf.placeholder(tf.float32, [FLAGS.bsize] + dimA, "act_train")
-        rew = tf.placeholder(tf.float32, [FLAGS.bsize], "rew")
-        obs2 = tf.placeholder(tf.float32, [FLAGS.bsize] + dimO, "obs2")
-        term2 = tf.placeholder(tf.bool, [FLAGS.bsize], "term2")
-
-        self.actor = HyperOptionsActor(self.use_conv, nets, dimO, dimA)
-        self.critic = Critic(self.use_conv, nets, dimO, dimA)
-
-        self.actor.compute_loss(nets, obs, dimA, is_training, self.critic, self.sess)
-        self.critic.compute_loss(nets, obs, is_training, act_train, rew, obs2, term2, self.actor)
-
-        summary_writer = tf.train.SummaryWriter(os.path.join(FLAGS.outdir, 'board'), self.sess.graph)
-        summary_list = []
-        # summary_list.append(tf.scalar_summary('Qvalue', tf.reduce_mean(q_train)))
-        # summary_list.append(tf.scalar_summary('loss', ms_td_error))
-        summary_list.append(tf.scalar_summary('reward', tf.reduce_mean(rew)))
-
-        # tf functions
-        with self.sess.as_default():
-            self.outputs = self.actor.train_p + [self.critic.train_q, self.critic.loss_q]
-            self._train = Fun([obs, act_train, rew, obs2, term2, is_training],
-                              self.outputs,
-                              summary_list, summary_writer)
-
-        # initialize tf variables
-        self.saver = tf.train.Saver(max_to_keep=1)
-        ckpt = tf.train.latest_checkpoint(FLAGS.outdir + "/tf")
-        if ckpt:
-            self.saver.restore(self.sess, ckpt)
-        else:
-            self.sess.run(tf.initialize_all_variables())
-
-        self.sess.graph.finalize()
-
-        self.t = 0  # global training time (number of observations)
-
+        self.actor.compute_loss(self.critic, obs, is_training)
 
     def train(self):
         obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
