@@ -25,6 +25,7 @@ flags.DEFINE_float('prate', 0.0001, 'policy net learning rate (only for DDPG)')
 flags.DEFINE_float('outheta', 0.15, 'noise theta')
 flags.DEFINE_float('ousigma', 0.1, 'noise sigma')
 flags.DEFINE_float('lrelu', 0.01, 'leak relu rate')
+flags.DEFINE_float('entropyreg', 0.001, 'entropy regularization on options (only for DDPGOptions')
 
 flags.DEFINE_integer('thread', 1, 'tensorflow threads')
 

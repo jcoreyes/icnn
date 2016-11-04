@@ -5,7 +5,7 @@ import os
 
 import numpy as np
 import tensorflow as tf
-
+import tensorflow.contrib.bayesflow as bf
 import ddpg_nets_dm
 import ddpg_convnets_dm
 from replay_memory import ReplayMemory
@@ -60,9 +60,10 @@ class HyperOptionsActor(Actor):
 
         weighted_q_values = tf.reduce_mean(tf.mul(self.train_policy, self.q_values), 1)
         meanq = tf.reduce_mean(weighted_q_values, 0) #[tf.reduce_mean(q_value, 0) for q_value in q_values]
+        entropy_reg = FLAGS.entropyreg * tf.reduce_mean(entropy(self.train_policy), 0)
 
         wd_p = tf.add_n([FLAGS.pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
-        loss_p = -meanq + wd_p
+        loss_p = -meanq + wd_p + -entropy_reg
 
         # Policy optimization
         optim_p = tf.train.AdamOptimizer(learning_rate=FLAGS.prate)
@@ -105,6 +106,9 @@ class OptionsAgent(Agent):
         output = self._train(obs, act, rew, ob2, term2, True, log=FLAGS.summary, global_step=self.t)
         loss = output[-1]
         return loss
+
+def entropy(p):
+    return - tf.reduce_sum(p * tf.log(p), 1)
 
 def gather_cols(params, indices, name=None):
     """Gather columns of a 2D tensor.
