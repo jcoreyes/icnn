@@ -15,7 +15,7 @@ FLAGS = flags.FLAGS
 
 
 # DDPG Agent
-class Actor():
+class Actor(object):
     def __init__(self, use_conv, nets, dimO, dimA):
         if use_conv:
             self.theta_p = nets.theta_p(dimO, dimA, FLAGS.conv1filter, FLAGS.conv1numfilters,
@@ -27,9 +27,9 @@ class Actor():
 
     def compute_loss(self, nets, obs, dimA, is_training, critic, sess):
         # Policy loss
-        act_train_policy = nets.policy(obs, self.theta_p, is_training, reuse=None)
-        q_train_policy = nets.qfunction(obs, act_train_policy, critic.theta_q, is_training, reuse=None)
-        meanq = tf.reduce_mean(q_train_policy, 0)
+        self.act_train_policy = nets.policy(obs, self.theta_p, is_training, reuse=None)
+        self.q_train_policy = nets.qfunction(obs, self.act_train_policy, critic.theta_q, is_training, reuse=None)
+        meanq = tf.reduce_mean(self.q_train_policy, 0)
         wd_p = tf.add_n([FLAGS.pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
         loss_p = -meanq + wd_p
 
@@ -56,7 +56,11 @@ class Actor():
             self._act_expl = Fun([obs, is_training], self.act_expl)
             self._reset = Fun([], self.ou_reset)
 
-
+    def act_fun(self, obs, test):
+        if test:
+            return self.act_test
+        else:
+            return self.act_expl
 
     def act(self, obs, test):
         if test:
@@ -67,7 +71,12 @@ class Actor():
     def reset(self):
         self._reset()
 
-class Critic():
+class OptionsActor(Actor):
+    def __init__(self, use_conv, nets, dimO, dimA):
+        super(OptionsActor, self).__init__(use_conv, nets, dimO, dimA)
+
+
+class Critic(object):
     def __init__(self, use_conv, nets, dimO, dimA):
         if use_conv:
             self.theta_q = nets.theta_q(dimO, dimA, FLAGS.conv1filter, FLAGS.conv1numfilters,
@@ -77,7 +86,7 @@ class Critic():
         self.theta_qt, self.update_qt = exponential_moving_averages(self.theta_q, FLAGS.tau)
 
     def compute_loss(self, nets, obs, is_training, act_train, rew, obs2, term2, actor):
-        q_train = nets.qfunction(obs, act_train, self.theta_q, is_training, reuse=True)
+        q_train = nets.qfunction(obs, act_train, self.theta_q, is_training, reuse=None)
         # q targets
         act2 = nets.policy(obs2, actor.theta_pt, is_training, reuse=True)
         q2 = nets.qfunction(obs2, act2, self.theta_qt, is_training, reuse=True)
@@ -98,7 +107,7 @@ class Critic():
             self.train_q = tf.group(self.update_qt)
 
 
-class Agent:
+class Agent(object):
 
     def __init__(self, dimO, dimA):
         dimA = list(dimA)
@@ -193,6 +202,7 @@ class Agent:
 
     def __del__(self):
         self.sess.close()
+
 
 
 # Tensorflow utils

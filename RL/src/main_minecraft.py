@@ -32,6 +32,9 @@ flags.DEFINE_integer('gymseed', 0, 'random seed for openai gym')
 flags.DEFINE_integer('npseed', 0, 'random seed for numpy')
 flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
 
+# Option specific
+flags.DEFINE_integer('num_options', 2, 'Only applies to DDPGOptions.')
+
 # Env specific
 flags.DEFINE_boolean('vision', True, 'whether to use vision observations')
 flags.DEFINE_integer('width', 32, 'width of video obs')
@@ -40,48 +43,19 @@ flags.DEFINE_string('maze', 'TMaze', 'type of maze')
 flags.DEFINE_boolean('reset', False, 'whether to recreate minecraft env each time')
 flags.DEFINE_integer('num_parallel', 1, 'how many servers to use at same time.')
 
+
 if FLAGS.model == 'DDPG':
     import ddpg
     Agent = ddpg.Agent
+if FLAGS.model == 'DDPGOptions':
+    import ddpg_options
+    Agent = ddpg_options.OptionsAgent
 elif FLAGS.model == 'NAF':
     import naf
     Agent = naf.Agent
 elif FLAGS.model == 'ICNN':
     import icnn
     Agent = icnn.Agent
-
-maze_strings = [
-    ['1111111111',
-    '1s000000e1',
-    '1111111111'],
-    ['111',
-    '1s1',
-    '101',
-    '101',
-    '101',
-    '101',
-    '101',
-    '1e1',
-    '111'],
-    ['0011100',
-    '001s100',
-    '0010100',
-    '0010100',
-    '0010100',
-    '0010100',
-    '1110111',
-    '1e000l1',
-    '1111111'],
-    ['llllllll',
-     'l00s000l',
-     'l000000l',
-     'l000000l',
-     # 'l000000l',
-     # 'l000000l',
-     # 'l000000l',
-     'l00e000l',
-     'llllllll']
-    ]
 
 
 class Experiment(object):
