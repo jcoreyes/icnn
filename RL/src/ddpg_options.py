@@ -42,7 +42,11 @@ class HyperOptionsActor(Actor):
             # Action explore
             options_explore = tf.concat(1, [actor.explore_policy for actor in self.actors])
             # options, options_prob = self.compute_options(obs, nets, is_training, reuse=True)
-            self.act_expl = gather_cols(options_explore, tf.to_int32(tf.argmax(self.test_policy, 0)))
+            if FLAGS.stochastic_options:
+                option_idx = tf.reshape(tf.multinomial(self.test_policy, 1), [-1])
+            else:
+                option_idx = tf.argmax(self.test_policy, 1)  
+            self.act_expl = gather_cols(options_explore, tf.to_int32(option_idx))
             self.act_test = self.act_expl
 
     def _create_policy_funs(self, obs, sess, is_training):
@@ -58,8 +62,8 @@ class HyperOptionsActor(Actor):
         # Q value using each option
         self.q_values = tf.pack([actor.q_train_policy for actor in self.actors], 1)
 
-        weighted_q_values = tf.reduce_mean(tf.mul(self.train_policy, self.q_values), 1)
-        meanq = tf.reduce_mean(weighted_q_values, 0) #[tf.reduce_mean(q_value, 0) for q_value in q_values]
+        weighted_q_values = tf.reduce_sum(tf.mul(self.train_policy, self.q_values), 1)
+        meanq = tf.reduce_mean(weighted_q_values) #[tf.reduce_mean(q_value, 0) for q_value in q_values]
         entropy_reg = FLAGS.entropyreg * tf.reduce_mean(entropy(self.train_policy), 0)
 
         wd_p = tf.add_n([FLAGS.pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay

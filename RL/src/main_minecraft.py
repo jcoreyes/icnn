@@ -34,6 +34,7 @@ flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
 
 # Option specific
 flags.DEFINE_integer('num_options', 2, 'Only applies to DDPGOptions.')
+flags.DEFINE_boolean('stochastic_options', True, 'Choose options stochastically')
 
 # Env specific
 flags.DEFINE_boolean('vision', True, 'whether to use vision observations')
@@ -100,22 +101,23 @@ class Experiment(object):
             avg_rewards.append(avg_reward)
             print('Average test return {} after {} timestep of training.'.format(avg_reward, self.train_timestep))
             #print >> simple_log_file, "{}\t{}\t{}\t{}\t{}".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list))
-            simple_log_file.write("{}\t{}\t{}\t{}\t{}\n".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list)))
-            simple_log_file.flush()
             # Stopping criterion
             if self.train_timestep > 5e5 and len(avg_rewards) > 10 and np.var(avg_rewards) < 1:
                 break
 
 
             # train
-            reward_list = []
+            train_reward_list = []
             last_checkpoint = self.train_timestep / FLAGS.train
             while self.train_timestep / FLAGS.train == last_checkpoint:
                 reward, timestep = self.run_episode(test=False, monitor=False)
-                reward_list.append(reward)
+                train_reward_list.append(reward)
                 self.train_timestep += timestep
-            avg_reward = np.mean(reward_list)
-            print('Average train return {} after {} timestep of training.'.format(avg_reward, self.train_timestep))
+            train_avg_reward = np.mean(train_reward_list)
+            print('Average train return {} after {} timestep of training.'.format(train_avg_reward, self.train_timestep))
+            simple_log_file.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list), 
+                                                                    train_avg_reward))
+            simple_log_file.flush()
 
         #self.env.monitor.close()
 

@@ -62,7 +62,7 @@ class Actor(object):
         return noise 
  
     def compute_loss(self, critic, obs, is_training):
-        # Used for computing policy gradient
+        # Used for computing policy gradient. Q(obs, train_policy)
         with tf.variable_scope(critic.scope):
             self.q_train_policy = self.nets.qfunction(obs, self.train_policy, critic.theta_q,
                                                  is_training, reuse=True)
