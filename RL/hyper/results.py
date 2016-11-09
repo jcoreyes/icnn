@@ -20,6 +20,7 @@ perf = []
 for log_file in log_files:
     steps, avg_r, std_r, min_r, max_r, train_r = get_data(log_file)
     if steps is not None:
+        print steps[-1], avg_r[-1], train_r[-1]
         if avg_r[-1] > 10:
             min_steps = steps[avg_r<10].max()
             perf.append((min_steps, log_file))

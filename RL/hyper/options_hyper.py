@@ -23,7 +23,7 @@ MAIN_FILE = "../src/main_minecraft.py"
 OUTDIR = 'ddpgoptionstmazevision/'
 NUM_PARALLEL = 3
 
-default_args = ['--vision', 'True', '--width', str(32), '--height', str(32),
+default_args = ['--model', 'DDPGOptions', '--vision', 'True', '--width', str(32), '--height', str(32),
                 '--force', 'True', '--maze', 'TMaze', '--num_parallel', str(NUM_PARALLEL)]
 
 def create_command(param_names, params):

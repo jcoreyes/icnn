@@ -24,7 +24,7 @@ flags.DEFINE_boolean('force', False, 'overwrite existing results')
 flags.DEFINE_integer('train', 1000, 'training timesteps between testing episodes')
 flags.DEFINE_integer('test', 10, 'testing episodes between training timesteps')
 flags.DEFINE_integer('tmax', 1000, 'maxium timesteps each episode')
-flags.DEFINE_integer('total', 2e4, 'total training timesteps')
+flags.DEFINE_integer('total', 6e4, 'total training timesteps')
 flags.DEFINE_float('monitor', 0.01, 'probability of monitoring a test episode')
 flags.DEFINE_string('model', 'DDPG', 'reinforcement learning model[DDPG, NAF, ICNN]')
 flags.DEFINE_integer('tfseed', 0, 'random seed for tensorflow')
@@ -34,7 +34,7 @@ flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
 
 # Option specific
 flags.DEFINE_integer('num_options', 2, 'Only applies to DDPGOptions.')
-flags.DEFINE_boolean('stochastic_options', True, 'Choose options stochastically')
+flags.DEFINE_boolean('stochastic_options', False, 'Choose options stochastically')
 
 # Env specific
 flags.DEFINE_boolean('vision', True, 'whether to use vision observations')

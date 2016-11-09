@@ -20,12 +20,14 @@ class HyperOptionsActor(Actor):
     def __init__(self, use_conv, nets, dimO, dimA, obs, obs2, is_training,
                  sess, scope='hyperactor'):
         self.actors = []
+        self.sess = sess
         with tf.variable_scope(scope):
             for i in range(FLAGS.num_options):
                 actor = Actor(use_conv, nets, dimO, dimA, obs, obs2, is_training,
                               sess, scope='actor%d' % i)
                 self.actors.append(actor)
-
+                # TODO remove hack, have to set dimA back to actual dimA and not num options
+        self.dimActions = dimA
         super(HyperOptionsActor, self).__init__(use_conv, nets, dimO, [FLAGS.num_options], obs, obs2,
                                                 is_training, sess, scope)
 
@@ -37,16 +39,19 @@ class HyperOptionsActor(Actor):
             self.explore_policy = self.test_policy #+ self._compute_noise()
 
             self.options2 = self.nets.policy(obs2, self.theta_pt, is_training, reuse=True, l1_act=tf.nn.softmax)
-            self.act2 = gather_cols(tf.concat(1, [actor.act2 for actor in self.actors]),
-                                    tf.to_int32(tf.argmax(self.options2, 0)))
+            # self.act2 = gather_cols(tf.concat(1, [actor.act2 for actor in self.actors]),
+            #                         tf.to_int32(tf.argmax(self.options2, 0)))
+            # self.act2 = tf.pack([actor.act2 for actor in self.actors], 2) #act 2 will be (bsize, num_actions, num_options)
+            # options2_idx = tf.to_int32(tf.argmax(self.options2, 1))
+
+
             # Action explore
-            options_explore = tf.concat(1, [actor.explore_policy for actor in self.actors])
-            # options, options_prob = self.compute_options(obs, nets, is_training, reuse=True)
+            options_explore = tf.concat(1, [tf.reshape(actor.explore_policy, (self.dimActions[0], 1)) for actor in self.actors])
             if FLAGS.stochastic_options:
                 option_idx = tf.reshape(tf.multinomial(self.test_policy, 1), [-1])
             else:
                 option_idx = tf.argmax(self.test_policy, 1)  
-            self.act_expl = gather_cols(options_explore, tf.to_int32(option_idx))
+            self.act_expl = tf.reshape(gather_cols(options_explore, tf.to_int32(option_idx)), [1, self.dimActions[0]])
             self.act_test = self.act_expl
 
     def _create_policy_funs(self, obs, sess, is_training):
@@ -55,15 +60,23 @@ class HyperOptionsActor(Actor):
             self._act_test = Fun([obs, is_training], self.act_test)
             self._act_expl = Fun([obs, is_training], self.act_expl)
 
-    def compute_loss(self, critic, obs, is_training):
-        for i, actor in enumerate(self.actors):
-            actor.compute_loss(critic, obs, is_training)
-
-        # Q value using each option
-        self.q_values = tf.pack([actor.q_train_policy for actor in self.actors], 1)
-
-        weighted_q_values = tf.reduce_sum(tf.mul(self.train_policy, self.q_values), 1)
+    def _weighted_meanq(self, q_values, options_prob):
+        weighted_q_values = tf.reduce_sum(tf.mul(options_prob, q_values), 1)
         meanq = tf.reduce_mean(weighted_q_values) #[tf.reduce_mean(q_value, 0) for q_value in q_values]
+        return meanq
+
+    def compute_loss(self, critic, obs, obs2, is_training):
+        for i, actor in enumerate(self.actors):
+            actor.compute_loss(critic, obs, obs2, is_training)
+
+        # Compute q target for critic using weighted q values of options
+        q2_values = tf.pack([actor.q2 for actor in self.actors], 1)
+        self.q2 = self._weighted_meanq(q2_values, self.options2)
+
+        # Compute q value for training actor using weighted q values of options
+        q_values = tf.pack([actor.q_train_policy for actor in self.actors], 1)
+        meanq = self._weighted_meanq(q_values, self.train_policy)
+
         entropy_reg = FLAGS.entropyreg * tf.reduce_mean(entropy(self.train_policy), 0)
 
         wd_p = tf.add_n([FLAGS.pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
@@ -100,10 +113,11 @@ class OptionsAgent(Agent):
     def setup_actor_critic(self, nets, dimO, dimA, obs, obs2, is_training, rew, term2, act_train):
         self.actor = HyperOptionsActor(self.use_conv, nets, dimO, dimA, obs, obs2, is_training,
                            self.sess, scope='actor')
-        self.critic = Critic(self.use_conv, nets, dimO, dimA, obs, obs2, rew, term2, is_training,
-                             act_train, self.actor, scope='critic')
+        self.critic = Critic(self.use_conv, nets, dimO, dimA, obs, is_training, act_train,
+                             scope='critic')
 
-        self.actor.compute_loss(self.critic, obs, is_training)
+        self.actor.compute_loss(self.critic, obs, obs2, is_training)
+        self.critic.compute_loss(rew, term2, self.actor.q2)
 
     def train(self):
         obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)

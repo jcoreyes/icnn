@@ -61,9 +61,11 @@ class Actor(object):
                                      - tf.random_normal(self.dimA, stddev=FLAGS.ousigma))
         return noise 
  
-    def compute_loss(self, critic, obs, is_training):
+    def compute_loss(self, critic, obs, obs2, is_training):
         # Used for computing policy gradient. Q(obs, train_policy)
         with tf.variable_scope(critic.scope):
+            # Compute Q Target
+            self.q2 = self.nets.qfunction(obs2, self.act2, critic.theta_qt, is_training, reuse=True)
             self.q_train_policy = self.nets.qfunction(obs, self.train_policy, critic.theta_q,
                                                  is_training, reuse=True)
 
@@ -95,8 +97,7 @@ class Actor(object):
         return [self.train_p]
 
 class Critic(object):
-    def __init__(self, use_conv, nets, dimO, dimA, obs, obs2, rew, term2, is_training, act_train,
-                 actor, scope='critic'):
+    def __init__(self, use_conv, nets, dimO, dimA, obs, is_training, act_train, scope='critic'):
         self.use_conv = use_conv
         self.nets = nets
         self.dimO = dimO
@@ -111,14 +112,14 @@ class Critic(object):
         else:
             self.theta_q = nets.theta_q(dimO, dimA, FLAGS.l1size, FLAGS.l2size)
         self.theta_qt, self.update_qt = exponential_moving_averages(self.theta_q, FLAGS.tau)
-        
+
         with tf.variable_scope(self.scope):
-            # Used for computing TD error 
             self.q_train = nets.qfunction(obs, act_train, self.theta_q, is_training, reuse=None)
 
-            # Compute Q Target     
-            self.q2 = nets.qfunction(obs2, actor.act2, self.theta_qt, is_training, reuse=True)
-            self.q_target = tf.stop_gradient(tf.select(term2, rew, rew + FLAGS.discount * self.q2))
+    def compute_loss(self, rew, term2, q2):
+
+            # Used for computing TD error
+            self.q_target = tf.stop_gradient(tf.select(term2, rew, rew + FLAGS.discount * q2))
 
             # q loss
             td_error = self.q_train - self.q_target
@@ -185,8 +186,9 @@ class Agent(object):
 
         # tf functions
         with self.sess.as_default():
+            train_inputs = [obs, act_train, rew, obs2, term2, is_training]
             train_outputs = self.actor.get_train_outputs() + self.critic.get_train_outputs()
-            self._train = Fun([obs, act_train, rew, obs2, term2, is_training],
+            self._train = Fun(train_inputs,
                               train_outputs,
                               summary_list, summary_writer)
 
@@ -205,10 +207,12 @@ class Agent(object):
     def setup_actor_critic(self, nets, dimO, dimA, obs, obs2, is_training, rew, term2, act_train):
         self.actor = Actor(self.use_conv, nets, dimO, dimA, obs, obs2, is_training,
                            self.sess, scope='actor')
-        self.critic = Critic(self.use_conv, nets, dimO, dimA, obs, obs2, rew, term2, is_training,
-                             act_train, self.actor, scope='critic')
+        self.critic = Critic(self.use_conv, nets, dimO, dimA, obs, is_training, act_train,
+                             scope='critic')
 
-        self.actor.compute_loss(self.critic, obs, is_training)
+        self.actor.compute_loss(self.critic, obs, obs2, is_training)
+        self.critic.compute_loss(rew, term2, self.actor.q2)
+
 
     def reset(self, obs):
         self.actor.reset()

@@ -13,9 +13,9 @@ import json
 def make(mission_file):
     return Minecraft(mission_file)
 
-GOAL_REWARD = 10
-DEATH_REWARD = -10
-TIMEOUT_REWARD = -1
+GOAL_REWARD = 1000
+DEATH_REWARD = -1000
+TIMEOUT_REWARD = -100
 
 base_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <Mission xmlns="http://ProjectMalmo.microsoft.com"
@@ -50,7 +50,7 @@ base_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
     <AgentHandlers>
       <ContinuousMovementCommands turnSpeedDegs="180"/>
       <ObservationFromFullStats/>
-        <RewardForMissionEnd rewardForDeath="-10">
+        <RewardForMissionEnd rewardForDeath="-1000">
         <Reward description="out_of_time" reward="-1" />
       </RewardForMissionEnd>
     </AgentHandlers>
@@ -123,19 +123,6 @@ class Platform(Maze):
         self.end = (-5, -5)
 
     def create_maze_array(self):
-        ''' x is east west and z is north south
-        [['1' '1' '1' '1' '1' '1' '1' '1' '1' '1']
-         ['1' '1' '1' '1' '1' 's' '1' '1' '1' '1']
-         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
-         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
-         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
-         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
-         ['1' '1' '1' '1' '1' '0' '1' '1' '1' '1']
-         ['1' 'e' '0' '0' '0' '0' '0' '0' 'l' '1']
-         ['1' '1' '1' '1' '1' '1' '1' '1' '1' '1']]
-
-        '''
-
         maze_array = np.chararray((self.z_bound, self.x_bound))
         maze_array[:] = '0'
         maze_array[:2, :] = 'l'
@@ -341,11 +328,12 @@ class Minecraft(object):
             reward_distance_from_goal = True
             if reward_distance_from_goal:
                 distanceFromGoal = json.loads(world_state.observations[-1].text).get('distanceFromGoal')
-                if self.minDistanceFromGoal == None:
-                    self.minDistanceFromGoal = distanceFromGoal
-                if distanceFromGoal < self.minDistanceFromGoal:
-                    total_reward += (self.minDistanceFromGoal - distanceFromGoal)
-                    self.minDistanceFromGoal = distanceFromGoal
+                total_reward += - distanceFromGoal
+                # if self.minDistanceFromGoal == None:
+                #     self.minDistanceFromGoal = distanceFromGoal
+                # if distanceFromGoal < self.minDistanceFromGoal:
+                #     total_reward += (self.minDistanceFromGoal - distanceFromGoal)
+                #     self.minDistanceFromGoal = distanceFromGoal
 
             return (np.concatenate(frame_concat, axis=0), total_reward)
         else:
@@ -385,7 +373,7 @@ class Minecraft(object):
             action = self._action_set[action]
             self._send_command(action)
         else:
-            # print(zip(self._action_set, action.tolist()))
+            #print(zip(self._action_set, action.tolist()))
             for action_name, val in zip(self._action_set, action.tolist()):
                 action_name = action_name[0]
                 if action_name == 'jump':
