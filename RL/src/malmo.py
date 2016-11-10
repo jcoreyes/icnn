@@ -48,7 +48,7 @@ base_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
     <AgentStart>
     </AgentStart>
     <AgentHandlers>
-      <ContinuousMovementCommands turnSpeedDegs="180"/>
+
       <ObservationFromFullStats/>
         <RewardForMissionEnd rewardForDeath="-1000">
         <Reward description="out_of_time" reward="-1" />
@@ -59,6 +59,7 @@ base_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 </Mission>
 '''
 
+#       <ContinuousMovementCommands turnSpeedDegs="180"/>
 
 class Maze(object):
     def __init__(self):
@@ -69,7 +70,7 @@ class Maze(object):
 
 
 class TMaze(Maze):
-    def __init__(self, kwargs, x_bound=10, z_bound=9):
+    def __init__(self, kwargs, x_bound=9, z_bound=10):
         self.x_bound = x_bound
         self.z_bound = z_bound
         # Coordinate of t junction
@@ -95,6 +96,7 @@ class TMaze(Maze):
         maze_array = np.chararray((self.z_bound, self.x_bound))
         maze_array[:] = '1'
         maze_array[1:self.t_coord[0], self.t_coord[1]] = '0'
+        maze_array[-1, self.t_coord[1]] = 'g'
         maze_array[self.z_bound - 2, 1:self.x_bound - 2] = '0'
         maze_array[self.start] = 's'
         maze_array[self.end] = 'e'
@@ -104,7 +106,7 @@ class TMaze(Maze):
         return maze_array
 
 class TMazeLava(TMaze):
-    def __init__(self, kwargs, x_bound=10, z_bound=9):
+    def __init__(self, kwargs, x_bound=11, z_bound=11):
         super(self.__class__, self).__init__(kwargs, x_bound, z_bound)
         self.trap2 = (self.z_bound / 2, self.x_bound / 2)
 
@@ -167,8 +169,7 @@ class MissionGen(object):
         # my_mission.observeChat()
         # my_mission.observeGrid(-1, -1, -1, 1, 1, 1, 'grid')
         # my_mission.observeHotBar()
-        # my_mission.o
-        # my_mission.forceWorldReset()
+
         return my_mission
 
     def draw_wall(self, mission, x1, x2, z1, z2, height):
@@ -191,6 +192,8 @@ class MissionGen(object):
                     mission.startAt(x, self.floor, z)
                 elif elem == 'l':
                     mission.drawBlock(x, self.floor - 1, z, 'lava')
+                elif elem == 'g':
+                    mission.drawLine(x, self.floor, z, x, self.floor + self.end_height, z, 'emerald_block')
                 elif elem == 'r':
                     mission.drawLine(x, self.floor, z, x, self.floor + self.end_height, z, 'redstone_block')
                 elif elem == 'e':
@@ -212,7 +215,7 @@ class MissionGen(object):
 
 
 class Minecraft(object):
-    def __init__(self, maze_def, reset, video_dim=(32, 32), num_parallel=1, time_limit=30,
+    def __init__(self, maze_def, reset, video_dim=(32, 32), num_parallel=1, time_limit=20,
                  discrete_actions=False, vision_observation=True, depth=False, num_frames=1, grayscale=True):
         self.video_width, self.video_height = video_dim
         self.image_width, self.image_height = video_dim
@@ -226,10 +229,7 @@ class Minecraft(object):
         self.mission = self.mission_gen.generate_mission(maze.create_maze_array(), reset=reset)
         self.XGoalPos, self.YGoalPos = self.mission_gen.goal_pos[0], self.mission_gen.goal_pos[2]
 
-        # with open(mission_file, 'r') as f:
-        #     print("Loading mission from %s" % mission_file)
-        #     mission_xml = f.read()
-        #     self.mission = MalmoPython.MissionSpec(mission_xml, True)
+
         self.mission.requestVideo(self.video_height, self.video_width)
         self.mission.observeRecentCommands()
         self.mission.allowAllContinuousMovementCommands()
@@ -253,11 +253,14 @@ class Minecraft(object):
             self._action_set = {0: "move 1", 1: "turn 1", 2: "turn -1"}
             self.action_space = Discrete(n=len(self._action_set))
         else:
-            # self._action_set = ["move", "turn", "pitch"]
-            # self.action_space = Box(np.array([0, -.5, -.5]), np.array([1, .5, .5]))
             self._action_set = [("move", (-1, 1)),
-                                ("turn", (-0.5, 0.5))]
+                               ("turn", (-1, 1))]
                                 #("jump", (-1, 1))]
+            # self._action_set = [("move", (0, 1)),
+            #                     ("move", (-1, 0)),
+            #                     ("turn", (0, 1)),
+            #                     ("turn", (-1, 0))]
+
             lower_bound = np.asarray([x[1][0] for x in self._action_set])
             upper_bound = np.asarray([x[1][1] for x in self._action_set])
             self.action_space = Box(lower_bound, upper_bound)
@@ -277,10 +280,9 @@ class Minecraft(object):
         self.max_dist = np.linalg.norm((x_bounds[-1], z_bounds[-1]))
         self.minDistanceFromGoal = None
         if self.vision_observation:
-            self.observation_space = Box(low=0,
-                                         high=high,
-                                         shape=(self.num_frames * self.num_frame_channels, self.image_height,
-                                                self.image_width))
+            self.observation_space = Box(low=0, high=high,
+                                         shape=(self.image_height,
+                                                self.image_width, self.num_frames * self.num_frame_channels))
         else:
 
             self.obs_keys = [(u'XPos', x_bounds),
@@ -293,74 +295,59 @@ class Minecraft(object):
             l_bounds = [key[1][0] for key in self.obs_keys]
             u_bounds = [key[1][1] for key in self.obs_keys]
             self.observation_space = Box(np.array(l_bounds), np.array(u_bounds))
-        # self._horizon = env.spec.timestep_limit
+
         self.last_obs = None
         self.cum_reward = 0
         self.distance_travelled = 0
         self.terminal = False
         self.jump = 0
 
+    def _get_frames(self, world_state):
+        # tf will expect (n, h, w, c)
+        frame_concat = []
+        for i in range(self.num_frames, 0, -1):
+            frame = world_state.video_frames[-i]
+            image = Image.frombytes('RGB', (frame.width, frame.height), str(frame.pixels))
+            if self.grayscale:
+                image = image.convert('L')
+            frame_concat.append(np.asarray(image))
+        return np.concatenate(frame_concat, axis=2)
+
+    def _get_gamestate(self, world_state):
+        frame = world_state.video_frames[-1]
+
+        msg = json.loads(world_state.observations[-1].text)
+        state = []
+        for index, key in enumerate(self.obs_keys):
+            if key[0] == 'yaw':
+                obs = getattr(frame, 'yaw') % 360  # Yaw is cumulative so need to take mod
+            elif key[0] == u'DistanceTravelled':
+                obs = msg.get(key[0]) - self.lastDistanceTravelled
+                self.distance_travelled = obs
+                self.lastDistanceTravelled = msg.get(key[0])
+            elif 'GoalPos' in key[0]:
+                obs = getattr(self, key[0])
+            else:
+                obs = msg.get(key[0])
+            if obs is None:
+                print("Obs was None", key[0])
+            state.append(float(obs))
+        return state
 
     def _get_obs(self, world_state):
-        total_reward = -.1
+        total_reward = 0
         for reward in world_state.rewards:
             total_reward += reward.getValue()
 
         if self.vision_observation:
-            # if len(world_state.video_frames) < 1:
-            #    print("No frames, setting obs and reward to 0")
-            #    return np.zeros(self.observation_space.shape), 0
+            state = self._get_frames(world_state)
+            distanceFromGoal = json.loads(world_state.observations[-1].text).get('distanceFromGoal')
+            total_reward += - distanceFromGoal
+            return (state, total_reward)
 
-            frame_concat = []
-            for i in range(self.num_frames, 0, -1):
-                frame = world_state.video_frames[-i]
-                image = Image.frombytes('RGB', (frame.width, frame.height), str(frame.pixels))
-                if self.grayscale:
-                    image = image.convert('L')
-                    image_np = np.array(image).reshape(1, self.image_height, self.image_width)
-                else:
-                    # gray_scale = image.convert('LA')
-                    image_np = np.array(image.resize((self.image_width, self.image_height))) \
-                        .transpose(2, 0, 1).reshape(3, self.image_height, self.image_width)
-                frame_concat.append(image_np)
-
-
-            reward_distance_from_goal = True
-            if reward_distance_from_goal:
-                distanceFromGoal = json.loads(world_state.observations[-1].text).get('distanceFromGoal')
-                total_reward += - distanceFromGoal
-                # if self.minDistanceFromGoal == None:
-                #     self.minDistanceFromGoal = distanceFromGoal
-                # if distanceFromGoal < self.minDistanceFromGoal:
-                #     total_reward += (self.minDistanceFromGoal - distanceFromGoal)
-                #     self.minDistanceFromGoal = distanceFromGoal
-
-            return (np.concatenate(frame_concat, axis=0), total_reward)
         else:
-            # if len(world_state.video_frames) < 1 or len(world_state.observations) < 1:
-            #    print("No frames, setting obs to last state")
-            #    return self.last_obs, total_reward
-            frame = world_state.video_frames[-1]
-
-            msg = json.loads(world_state.observations[-1].text)
-            state = []
-            for index, key in enumerate(self.obs_keys):
-                if key[0] == 'yaw':
-                    obs = getattr(frame, 'yaw') % 360  # Yaw is cumulative so need to take mod
-                elif key[0] == u'DistanceTravelled':
-                    obs = msg.get(key[0]) - self.lastDistanceTravelled
-                    self.distance_travelled = obs
-                    self.lastDistanceTravelled = msg.get(key[0])
-                elif 'GoalPos' in key[0]:
-                    obs = getattr(self, key[0])
-                else:
-                    obs = msg.get(key[0])
-                if obs is None:
-                    print("Obs was None", key[0])
-                state.append(float(obs))
-            # print state
-            # self.last_obs = state
-            return state, total_reward
+            state = self._get_gamestate(world_state)
+            return (state, total_reward)
 
     def _send_command(self, action_str):
         try:
@@ -373,7 +360,7 @@ class Minecraft(object):
             action = self._action_set[action]
             self._send_command(action)
         else:
-            #print(zip(self._action_set, action.tolist()))
+            #print action
             for action_name, val in zip(self._action_set, action.tolist()):
                 action_name = action_name[0]
                 if action_name == 'jump':
@@ -382,16 +369,6 @@ class Minecraft(object):
                         self._send_command('jump 1')
                 else:
                     self._send_command('%s %f' % (action_name, val))
-
-    # @property
-    # def observation_space(self):
-    #     return self._observation_space
-    #
-    #
-    # #@property
-    # def action_space(self):
-    #     return self.action_space
-
 
     # @property
     def horizon(self):
@@ -458,52 +435,39 @@ class Minecraft(object):
         #       and len(world_state.video_frames) > 0
         return self._get_obs(world_state)[0]
 
-    def step(self, action):
-        self.total_steps += 1
-
-        step_info = {}
-        # world_state = self.agent_host.getWorldState()
-
-        # Flag is set when mission is ended.
-        # Deal with issue where sample that ends mission won't be sampled from replay memory
-        # if self.terminal:
-        #    return self.last_obs, 0, True, step_info
+    def _reset_jump(self):
+        # Jumping if either on or off to turn off if it was on
         if self.jump == 1:
             self._send_command(('jump 0'))
             self.jump = 0
+
+    def step(self, action):
+        self.total_steps += 1
+        step_info = {}
+
+        # Reset world state
+        self.agent_host.getWorldState()
+
+        # Perform action and wait
         self._perform_action(action)
-
+        self._reset_jump()
         time.sleep(.02)
-        world_state = self.agent_host.getWorldState()
 
-        while world_state.is_mission_running and \
+        # Wait for a new frame and observation
+        world_state = self.agent_host.peekWorldState()
+        while (world_state.is_mission_running and
                 (world_state.number_of_video_frames_since_last_state < self.num_frames or
-                         len(world_state.observations) < 1):  # and \
-            # world_state.number_of_observations_since_last_state < 1:
-            # print("Waiting for frames...")
+                 world_state.number_of_observations_since_last_state < 1)):
             time.sleep(0.01)
             world_state = self.agent_host.peekWorldState()
-        if not world_state.is_mission_running:
-            ob = self.last_obs
-            total_reward = 0
-            for reward in world_state.rewards:
-                total_reward += reward.getValue()
-            if total_reward == 0 and self.cum_reward == 0:
-                total_reward = -1
-            self.cum_reward += total_reward
-            print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
-        else:
 
-            assert len(world_state.observations) > 0 and len(world_state.video_frames) > 0
+        if world_state.is_mission_running:
             ob, total_reward = self._get_obs(world_state)
             self.last_obs = ob
-
-        # if len(world_state.mission_control_messages) > 0:
-        #     for x in world_state.mission_control_messages:
-        #         print x.text
-
-        # total_reward += 0.1 * self.distance_travelled
-        # print self.distance_travelled
+        else:
+            ob = self.last_obs
+            total_reward = sum([reward.getValue() for reward in world_state.rewards])
+            print("Mission is over with total reward and total steps", self.cum_reward, self.total_steps)
 
 
         self.cum_reward += total_reward

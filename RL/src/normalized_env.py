@@ -79,9 +79,9 @@ def make_normalized_env(env):
 
     fenv = FilteredEnv()
 
-    print('True action space: ' + str(act_space.low) + ', ' + str(act_space.high))
-    print('True state space: ' + str(obs_space.low) + ', ' + str(obs_space.high))
-    print('Filtered action space: ' + str(fenv.action_space.low) + ', ' + str(fenv.action_space.high))
-    print('Filtered state space: ' + str(fenv.observation_space.low) + ', ' + str(fenv.observation_space.high))
+    # print('True action space: ' + str(act_space.low) + ', ' + str(act_space.high))
+    # print('True state space: ' + str(obs_space.low) + ', ' + str(obs_space.high))
+    # print('Filtered action space: ' + str(fenv.action_space.low) + ', ' + str(fenv.action_space.high))
+    # print('Filtered state space: ' + str(fenv.observation_space.low) + ', ' + str(fenv.observation_space.high))
 
     return fenv

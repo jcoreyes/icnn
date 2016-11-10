@@ -7,23 +7,23 @@ from multiprocessing import Pool
 
 
 hyper_param = {
-'batchnorm': (True),
-'rate': (0.1, 0.01, 0.001, 0.0001),
+'rate': (0.01, 0.001, 0.0001),
 'prate': (0.001, 0.0001, 0.00001),
-'outheta':(0.0, 0.1, 0.15, 0.30, 0.45),
-'ousigma':(0.0, 0.05, 0.1, 0.2, 0.3),
-'reward_k':(100, 10, 1.0, 0.1, 0.01)
+'outheta':(0.15, 0.30),
+'ousigma':(0.1, 0.2),
+'reward_k':(0.1, 0.01, 0.001)
 }
 
 
 param_names = hyper_param.keys()
 grid = set(product(*[set(x) for x in hyper_param.values()]))
 MAIN_FILE = "../src/main_minecraft.py"
-OUTDIR = 'ddpgtmazevision/'
-NUM_PARALLEL = 4
+OUTDIR = 'ddpgtmazenewrvision/'
+NUM_PARALLEL = 3
 
 default_args = ['--vision', 'True', '--width', str(32), '--height', str(32),
-                '--force', 'True', '--maze', 'TMaze', '--num_parallel', str(NUM_PARALLEL)]
+                '--force', 'True', '--maze', 'TMaze', '--num_parallel', str(NUM_PARALLEL),
+                '--batchnorm', 'True', '--train', str(1000), '--test', str(10), '--total', str(30000)]
 
 def create_command(param_names, params):
     command_args = []

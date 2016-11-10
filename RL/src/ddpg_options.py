@@ -5,16 +5,42 @@ import os
 
 import numpy as np
 import tensorflow as tf
-import tensorflow.contrib.bayesflow as bf
-import ddpg_nets_dm
-import ddpg_convnets_dm
-from replay_memory import ReplayMemory
 from ddpg import Actor, Critic, Agent, Fun, exponential_moving_averages
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 
 # DDPG Agent
+class OptionsSingleActor(Actor):
+    """
+    One actor with multiple output actions + multinomial distribution over options
+    """
+
+    def __init__(self, use_conv, nets, dimO, dimA, obs, obs2, is_training,
+                 sess, scope='singleactor'):
+        super(OptionsSingleActor, self).__init__(use_conv, nets, dimO, [FLAGS.num_options], obs, obs2,
+                                                is_training, sess, scope)
+class OptionsSingleAgent(Agent):
+    def __init__(self, dimO, dimA):
+        super(OptionsSingleAgent, self).__init__(dimO, dimA)
+
+    def setup_actor_critic(self, nets, dimO, dimA, obs, obs2, is_training, rew, term2, act_train):
+        self.actor = HyperOptionsActor(self.use_conv, nets, dimO, dimA, obs, obs2, is_training,
+                           self.sess, scope='actor')
+        self.critic = Critic(self.use_conv, nets, dimO, dimA, obs, is_training, act_train,
+                             scope='critic')
+
+        self.actor.compute_loss(self.critic, obs, obs2, is_training)
+        self.critic.compute_loss(rew, term2, self.actor.q2)
+
+    def train(self):
+        obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
+        output = self._train(obs, act, rew, ob2, term2, True, log=FLAGS.summary, global_step=self.t)
+        options_prob = output[0]
+        print options_prob
+        loss = output[-1]
+        return loss
+
 
 class HyperOptionsActor(Actor):
     def __init__(self, use_conv, nets, dimO, dimA, obs, obs2, is_training,
@@ -31,6 +57,22 @@ class HyperOptionsActor(Actor):
         super(HyperOptionsActor, self).__init__(use_conv, nets, dimO, [FLAGS.num_options], obs, obs2,
                                                 is_training, sess, scope)
 
+    def _choose_option(self, explore, option_prob):
+        if explore:
+            options = tf.concat(1, [tf.reshape(actor.explore_policy, (self.dimActions[0], 1)) for actor in
+                                            self.actors])
+        else:
+            options = tf.concat(1, [tf.reshape(actor.test_policy, (self.dimActions[0], 1)) for actor in
+                                            self.actors])
+
+        if FLAGS.stochastic_options:
+            option_idx = tf.reshape(tf.multinomial(option_prob, 1), [-1])
+        else:
+            option_idx = tf.argmax(option_prob, 1)
+
+        return tf.reshape(gather_cols(options, tf.to_int32(option_idx)), [1, self.dimActions[0]])
+
+
     def _create_policy_ops(self, obs, obs2, is_training):
         with tf.variable_scope(self.scope):
             # Will be used by critic to compute policy gradient
@@ -39,20 +81,10 @@ class HyperOptionsActor(Actor):
             self.explore_policy = self.test_policy #+ self._compute_noise()
 
             self.options2 = self.nets.policy(obs2, self.theta_pt, is_training, reuse=True, l1_act=tf.nn.softmax)
-            # self.act2 = gather_cols(tf.concat(1, [actor.act2 for actor in self.actors]),
-            #                         tf.to_int32(tf.argmax(self.options2, 0)))
-            # self.act2 = tf.pack([actor.act2 for actor in self.actors], 2) #act 2 will be (bsize, num_actions, num_options)
-            # options2_idx = tf.to_int32(tf.argmax(self.options2, 1))
-
 
             # Action explore
-            options_explore = tf.concat(1, [tf.reshape(actor.explore_policy, (self.dimActions[0], 1)) for actor in self.actors])
-            if FLAGS.stochastic_options:
-                option_idx = tf.reshape(tf.multinomial(self.test_policy, 1), [-1])
-            else:
-                option_idx = tf.argmax(self.test_policy, 1)  
-            self.act_expl = tf.reshape(gather_cols(options_explore, tf.to_int32(option_idx)), [1, self.dimActions[0]])
-            self.act_test = self.act_expl
+            self.act_expl = self._choose_option(True, self.explore_policy)
+            self.act_test = self._choose_option(False, self.test_policy)
 
     def _create_policy_funs(self, obs, sess, is_training):
         # Create functions for execution
@@ -80,7 +112,7 @@ class HyperOptionsActor(Actor):
         entropy_reg = FLAGS.entropyreg * tf.reduce_mean(entropy(self.train_policy), 0)
 
         wd_p = tf.add_n([FLAGS.pl2norm * tf.nn.l2_loss(var) for var in self.theta_p])  # weight decay
-        loss_p = -meanq + wd_p + -entropy_reg
+        loss_p = -meanq + wd_p #+ -entropy_reg
 
         # Policy optimization
         optim_p = tf.train.AdamOptimizer(learning_rate=FLAGS.prate)
@@ -104,7 +136,7 @@ class HyperOptionsActor(Actor):
         return self.summary_list
 
     def get_train_outputs(self):
-        return self.train_p
+        return  [self.explore_policy] + self.train_p
 
 class OptionsAgent(Agent):
     def __init__(self, dimO, dimA):
@@ -122,11 +154,13 @@ class OptionsAgent(Agent):
     def train(self):
         obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
         output = self._train(obs, act, rew, ob2, term2, True, log=FLAGS.summary, global_step=self.t)
+        options_prob = output[0]
+        print options_prob
         loss = output[-1]
         return loss
 
 def entropy(p):
-    return - tf.reduce_sum(p * tf.log(p), 1)
+    return - tf.reduce_sum(p * tf.log(p) + (1-p)*tf.log(1-p), 1)
 
 def gather_cols(params, indices, name=None):
     """Gather columns of a 2D tensor.

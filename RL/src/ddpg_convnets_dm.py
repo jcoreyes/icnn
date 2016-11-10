@@ -45,8 +45,9 @@ def theta_p(dimO, dimA, conv1filter, conv1numfilters, conv2filter, conv2numfilte
 def policy(obs, theta, is_training, reuse=False, name='policy', l1_act=tf.nn.tanh):
     with tf.variable_op_scope([obs], name, name):
         h0 = tf.identity(obs, name='h0-obs')
-        h0r = tf.reshape(h0, [-1, height, width, num_channels])
-        h1 = conv(h0r, theta[0], theta[1], strides1, padding, is_training, reuse, name +'bn1', 'conv1')
+        # tensorflow expects (batch_size, height, width, num_channels)
+        #h0r = tf.reshape(h0, [-1, height, width, num_channels])
+        h1 = conv(h0, theta[0], theta[1], strides1, padding, is_training, reuse, name +'bn1', 'conv1')
         h2 = conv(h1, theta[2], theta[3], strides2, padding, is_training, reuse, name + 'bn2', 'conv2')
         h2_flat = tf.reshape(h2, [-1, flat_dim])
         h3 = tf.nn.relu(tf.matmul(h2_flat, theta[4]) + theta[5], name='h1')
@@ -77,8 +78,8 @@ def qfunction(obs, act, theta, is_training, reuse=False, name="qfunction"):
     with tf.variable_op_scope([obs, act], name, name):
         h0 = tf.identity(obs, name='h0-obs')
         # h0a = tf.identity(act, name='h0-act')
-        h0r = tf.reshape(h0, [-1, height, width, num_channels])
-        h1 = conv(h0r, theta[0], theta[1], strides1, padding, is_training, reuse, name + 'bn1', 'conv1')
+       # h0r = tf.reshape(h0, [-1, height, width, num_channels])
+        h1 = conv(h0, theta[0], theta[1], strides1, padding, is_training, reuse, name + 'bn1', 'conv1')
         h2 = conv(h1, theta[2], theta[3], strides2, padding, is_training, reuse, name + 'bn2', 'conv2')
         h2_flat = tf.reshape(h2, [-1, flat_dim])
         h3 = tf.nn.relu(tf.matmul(h2_flat, theta[4]) + theta[5], name='h1')

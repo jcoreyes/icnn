@@ -79,7 +79,6 @@ class Experiment(object):
 
         dimO = self.env.observation_space.shape
         dimA = self.env.action_space.shape
-        print(dimO, dimA)
         #pprint.pprint(self.env.spec.__dict__)
 
         self.agent = Agent(dimO, dimA=dimA)
@@ -134,7 +133,7 @@ class Experiment(object):
             observation, reward, term, info = self.env.step(action)
             term = (not test and timestep + 1 >= FLAGS.tmax) or term
 
-            filtered_reward = reward #self.env.filter_reward(reward)
+            filtered_reward = self.env.filter_reward(reward)
             self.agent.observe(filtered_reward, term, observation, test=test)
 
             sum_reward += reward

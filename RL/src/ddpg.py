@@ -39,11 +39,11 @@ class Actor(object):
     def _create_policy_ops(self, obs, obs2, is_training):
         with tf.variable_scope(self.scope):
             # Will be used by critic to compute policy gradient
-            self.train_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=None)
-            self.test_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=True)
+            self.train_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=None, l1_act=tf.nn.tanh)
+            self.test_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=True, l1_act=tf.nn.tanh)
             self.explore_policy = self.test_policy + self._compute_noise()
 
-            self.act2 = self.nets.policy(obs2, self.theta_pt, is_training, reuse=True)
+            self.act2 = self.nets.policy(obs2, self.theta_pt, is_training, reuse=True, l1_act=tf.nn.tanh)
 
     def _create_policy_funs(self, obs, sess, is_training):
         # Create functions for execution
