@@ -8,7 +8,7 @@ from tensorflow.contrib.slim import batch_norm
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 padding = 'SAME'
-num_channels = 3
+num_channels = 3 * FLAGS.num_frames
 width, height = FLAGS.width, FLAGS.height
 flat_dim = 8*8*32
 strides1 = [1, 2, 2, 1]

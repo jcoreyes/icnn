@@ -40,6 +40,7 @@ flags.DEFINE_boolean('stochastic_options', False, 'Choose options stochastically
 flags.DEFINE_boolean('vision', True, 'whether to use vision observations')
 flags.DEFINE_integer('width', 32, 'width of video obs')
 flags.DEFINE_integer('height', 32, 'height of video obs')
+flags.DEFINE_integer('num_frames', 1, 'number of frames per obs if using vision')
 flags.DEFINE_string('maze', 'TMaze', 'type of maze')
 flags.DEFINE_boolean('reset', False, 'whether to recreate minecraft env each time')
 flags.DEFINE_integer('num_parallel', 1, 'how many servers to use at same time.')
@@ -67,10 +68,10 @@ class Experiment(object):
 
         # create normal
         maze_def = {'type': FLAGS.maze}
-        self.env = normalized_env.make_normalized_env(Minecraft(maze_def, reset=FLAGS.reset, grayscale=False,
-                                                                vision_observation=FLAGS.vision,
-                                                                video_dim=(FLAGS.height, FLAGS.width),
-                                                                num_parallel=FLAGS.num_parallel)) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
+        minecraft = Minecraft(maze_def, reset=FLAGS.reset, grayscale=False, vision_observation=FLAGS.vision,
+                              video_dim=(FLAGS.height, FLAGS.width), num_parallel=FLAGS.num_parallel,
+                              num_frames=FLAGS.num_frames)
+        self.env = normalized_env.make_normalized_env(minecraft) # normalized_env.make_normalized_env(gym.make(FLAGS.env))
         tf.set_random_seed(FLAGS.tfseed)
         np.random.seed(FLAGS.npseed)
         #self.env.monitor.start(os.path.join(FLAGS.outdir, 'monitor'), force=FLAGS.force)
