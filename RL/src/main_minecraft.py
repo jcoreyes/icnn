@@ -49,9 +49,12 @@ flags.DEFINE_integer('num_parallel', 1, 'how many servers to use at same time.')
 if FLAGS.model == 'DDPG':
     import ddpg
     Agent = ddpg.Agent
-if FLAGS.model == 'DDPGOptions':
+elif FLAGS.model == 'DDPGOptions':
     import ddpg_options
     Agent = ddpg_options.OptionsAgent
+elif FLAGS.model == 'DDPGSingleOptions':
+    import ddpg_options
+    Agent = ddpg_options.OptionsSingleAgent
 elif FLAGS.model == 'NAF':
     import naf
     Agent = naf.Agent

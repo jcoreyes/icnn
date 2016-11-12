@@ -12,19 +12,21 @@ hyper_param = {
 'prate': (0.001, 0.0001, 0.00001),
 'outheta':(0.0, 0.15, 0.30),
 #'ousigma':(0.0, 0.1, 0.2),
-'reward_k':(10, 1.0, 0.1, 0.01),
-'stochastic_options':(True, False)
+'reward_k':(0.1, 0.01, 0.001),
+#'stochastic_options':(True, False)
+'num_options':(1, 2, 3)
 }
 
 
 param_names = hyper_param.keys()
 grid = set(product(*[set(x) for x in hyper_param.values()]))
 MAIN_FILE = "../src/main_minecraft.py"
-OUTDIR = 'ddpgoptionstmazevision/'
+OUTDIR = 'ddpgsingleoptionsnewrtmazevision/'
 NUM_PARALLEL = 3
 
-default_args = ['--model', 'DDPGOptions', '--vision', 'True', '--width', str(32), '--height', str(32),
-                '--force', 'True', '--maze', 'TMaze', '--num_parallel', str(NUM_PARALLEL)]
+default_args = ['--model', 'DDPGSingleOptions', '--vision', 'True', '--width', str(32), '--height', str(32),
+                '--force', 'True', '--maze', 'TMaze', '--num_parallel', str(NUM_PARALLEL),
+                   '--total', str(50000)]
 
 def create_command(param_names, params):
     command_args = []

@@ -18,14 +18,66 @@ class OptionsSingleActor(Actor):
 
     def __init__(self, use_conv, nets, dimO, dimA, obs, obs2, is_training,
                  sess, scope='singleactor'):
-        super(OptionsSingleActor, self).__init__(use_conv, nets, dimO, [FLAGS.num_options], obs, obs2,
+        super(OptionsSingleActor, self).__init__(use_conv, nets, dimO, dimA, obs, obs2,
                                                 is_training, sess, scope)
+    def _compute_noise(self, action_dim):
+        noise_shape = action_dim + [FLAGS.num_options] 
+        noise_init = tf.zeros(noise_shape)
+        noise_var = tf.Variable(noise_init)
+        self.ou_reset = noise_var.assign(noise_init)
+        noise = noise_var.assign_sub((FLAGS.outheta) * noise_var
+                                     - tf.random_normal(noise_shape, stddev=FLAGS.ousigma))
+        return noise 
+
+    def _choose_option(self, explore, policy):
+        # remove hack 
+        dimA = (self.dimA[0] - FLAGS.num_options) / FLAGS.num_options
+        action_list, option_prob = policy
+        options = tf.concat(1, [tf.reshape(action, (dimA, 1)) for action in action_list])
+        if explore:
+            noise = self._compute_noise([dimA])
+            options += noise 
+        #if explore:
+        #    option_idx = tf.reshape(tf.multinomial(option_prob, 1), [-1])
+        #else:
+        #    option_idx = tf.argmax(option_prob, 1)
+        
+        option_idx = tf.argmax(option_prob, 1)
+        action = tf.reshape(gather_cols(options, tf.to_int32(option_idx)), [1, dimA]) 
+        policy = tf.concat(1, action_list + [option_prob])
+        return [action, policy]
+
+    def _create_policy_ops(self, obs, obs2, is_training):
+        with tf.variable_scope(self.scope):
+            # Will be used by critic to compute policy gradient
+            action_list, option_prob  = self.nets.policy(obs, self.theta_p, is_training, reuse=None, l1_act=tf.nn.softmax)
+            self.train_policy = tf.concat(1, action_list + [option_prob])
+            test_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=True, l1_act=tf.nn.softmax)
+            explore_policy = test_policy  # + self._compute_noise()
+            
+            action_list2, option_prob2 = self.nets.policy(obs2, self.theta_pt, is_training, reuse=True, l1_act=tf.nn.softmax)
+            self.act2 = tf.concat(1, action_list2 + [option_prob2]) 
+
+            # Action explore
+            self.explore_policy = self._choose_option(True, explore_policy)
+            self.test_policy = self._choose_option(False, test_policy)
+
+    def get_summary(self):
+        self.summary_list.append(tf.histogram_summary('options_prob', self.train_policy))
+        return self.summary_list
+
+    def get_train_outputs(self):
+        return [self.train_p]
+
 class OptionsSingleAgent(Agent):
     def __init__(self, dimO, dimA):
+        # For storing actions, dimA should be dimA * num_options + num_options
+        # but for creating policy, need to know proper dimA
+        dimA = [dimA[0] * FLAGS.num_options + FLAGS.num_options]
         super(OptionsSingleAgent, self).__init__(dimO, dimA)
 
     def setup_actor_critic(self, nets, dimO, dimA, obs, obs2, is_training, rew, term2, act_train):
-        self.actor = HyperOptionsActor(self.use_conv, nets, dimO, dimA, obs, obs2, is_training,
+        self.actor = OptionsSingleActor(self.use_conv, nets, dimO, dimA, obs, obs2, is_training,
                            self.sess, scope='actor')
         self.critic = Critic(self.use_conv, nets, dimO, dimA, obs, is_training, act_train,
                              scope='critic')
@@ -36,8 +88,8 @@ class OptionsSingleAgent(Agent):
     def train(self):
         obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
         output = self._train(obs, act, rew, ob2, term2, True, log=FLAGS.summary, global_step=self.t)
-        options_prob = output[0]
-        print options_prob
+        #options_prob = output[0]
+        #print options_prob
         loss = output[-1]
         return loss
 

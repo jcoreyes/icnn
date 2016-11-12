@@ -334,14 +334,12 @@ class Minecraft(object):
         return state
 
     def _get_obs(self, world_state):
-        total_reward = 0
-        for reward in world_state.rewards:
-            total_reward += reward.getValue()
+        total_reward = sum([reward.getValue() for reward in world_state.rewards])
 
         if self.vision_observation:
             state = self._get_frames(world_state)
             distanceFromGoal = json.loads(world_state.observations[-1].text).get('distanceFromGoal')
-            total_reward += - distanceFromGoal
+            total_reward += - distanceFromGoal #/ self.max_dist
             return (state, total_reward)
 
         else:

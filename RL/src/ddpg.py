@@ -8,6 +8,7 @@ import tensorflow as tf
 
 import ddpg_nets_dm
 import ddpg_convnets_dm
+import ddpg_singleactor_convnets
 from replay_memory import ReplayMemory
 
 flags = tf.app.flags
@@ -41,7 +42,7 @@ class Actor(object):
             # Will be used by critic to compute policy gradient
             self.train_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=None, l1_act=tf.nn.tanh)
             self.test_policy = self.nets.policy(obs, self.theta_p, is_training, reuse=True, l1_act=tf.nn.tanh)
-            self.explore_policy = self.test_policy + self._compute_noise()
+            self.explore_policy = self.test_policy + self._compute_noise(self.dimA)
 
             self.act2 = self.nets.policy(obs2, self.theta_pt, is_training, reuse=True, l1_act=tf.nn.tanh)
 
@@ -53,12 +54,12 @@ class Actor(object):
             self._reset = Fun([], self.ou_reset)
 
 
-    def _compute_noise(self):
-        noise_init = tf.zeros([1] + self.dimA)
+    def _compute_noise(self, action_dim):
+        noise_init = tf.zeros([1] + action_dim)
         noise_var = tf.Variable(noise_init)
         self.ou_reset = noise_var.assign(noise_init)
         noise = noise_var.assign_sub((FLAGS.outheta) * noise_var
-                                     - tf.random_normal(self.dimA, stddev=FLAGS.ousigma))
+                                     - tf.random_normal(action_dim, stddev=FLAGS.ousigma))
         return noise 
  
     def compute_loss(self, critic, obs, obs2, is_training):
@@ -145,7 +146,10 @@ class Agent(object):
     def __init__(self, dimO, dimA):
         dimA = list(dimA)
         dimO = list(dimO)
-        if len(dimO) > 1:
+        if FLAGS.model == 'DDPGSingleOptions':
+            self.use_conv = True
+            nets = ddpg_singleactor_convnets
+        elif len(dimO) > 1:
             assert len(dimO) == 3
             self.use_conv = True
             nets = ddpg_convnets_dm
@@ -220,10 +224,17 @@ class Agent(object):
 
     def act(self, test=False):
         obs = np.expand_dims(self.observation, axis=0)
-        action = self.actor.act(obs, test)
+        act_action = self.actor.act(obs, test)
+        if type(act_action) == list:
+            action, policy = act_action
+            self.action = policy 
+        else:
+            action = act_action
         action = np.clip(action, -1, 1)
-        self.action = np.atleast_1d(np.squeeze(action, axis=0))  # TODO: remove this hack
-        return self.action
+        action = np.atleast_1d(np.squeeze(action, axis=0))  # TODO: remove this hack
+        if type(act_action) != list:
+            self.action = action
+        return action 
 
     def observe(self, rew, term, obs2, test=False):
 
