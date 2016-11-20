@@ -115,6 +115,17 @@ class TMazeLava(TMaze):
         maze_array[self.trap2] = 'l'
         return maze_array
 
+class TMazeDoor(TMaze):
+    def __init__(self, kwargs, x_bound=11, z_bound=11):
+        super(self.__class__, self).__init__(kwargs, x_bound, z_bound)
+        self.door = (self.z_bound / 2, self.x_bound / 2)
+
+    def create_maze_array(self):
+
+        maze_array = super(TMazeDoor, self).create_maze_array()
+        maze_array[self.door] = 'd'
+        return maze_array
+
 class Platform(Maze):
     def __init__(self, kwargs, x_bound=11, z_bound=10):
         self.x_bound = x_bound
@@ -145,6 +156,8 @@ def create_maze(maze_def):
         return TMazeLava(maze_def)
     if maze_type == 'Platform':
         return Platform(maze_def)
+    if maze_type == 'TMazeDoor':
+        return TMazeDoor(maze_def)
     else:
         raise NotImplementedError
 
@@ -175,6 +188,24 @@ class MissionGen(object):
         for y in range(self.floor, self.floor + height):
             mission.drawLine(x1, y, z1, x2, y, z2, 'stone')
 
+    def create_door(self, mission, x, z, direction):
+        mission.drawBlock(x, self.floor + 2, z, 'stone')
+        if direction == 'up':
+            mission.drawBlock(x-1, self.floor, z, 'stone')
+            mission.drawBlock(x-1, self.floor+1, z, 'stone')
+            mission.drawBlock(x+1, self.floor, z, 'stone')
+            mission.drawBlock(x+1, self.floor+1, z, 'stone')
+
+
+        # mission.drawBlock(x, self.floor + 2, z-1, 'stone')
+        # mission.drawBlock(x, self.floor + 2, z+1, 'stone')
+        #mission.drawBlock(x, self.floor, z, 'minecart')
+        mission.drawLine(x, self.floor, z, x, self.floor+1, z, 'wooden_door')
+        #mission.drawBlock(x, self.floor+1, z, 'wooden_door')
+        #mission.drawBlock(x, self.floor+1, z, 'wooden_door')
+        #mission.drawBlock(x, self.floor+2, z, 'wooden_door')
+        #mission.drawBlock(x, self.floor+1, z-1, 'stone_button')
+
     def generate_mission(self, maze_array, reset=False):
         mission = self.base_config()
         if reset:
@@ -189,6 +220,8 @@ class MissionGen(object):
                     self.draw_wall(mission, x, x, z, z, self.height)
                 elif elem == 's':
                     mission.startAt(x, self.floor, z)
+                elif elem == 'd':
+                    self.create_door(mission, x, z, 'up')
                 elif elem == 'l':
                     mission.drawBlock(x, self.floor - 1, z, 'lava')
                 elif elem == 'g':
@@ -278,21 +311,22 @@ class Minecraft(object):
         z_bounds = self.mission_gen.z_bounds
         self.max_dist = np.linalg.norm((x_bounds[-1], z_bounds[-1]))
         self.minDistanceFromGoal = None
+
+        self.obs_keys = [(u'XPos', x_bounds),
+                         (u'ZPos', z_bounds),
+                         (u'yaw', (0, 360)),
+                         (u'XGoalPos', x_bounds),
+                         (u'YGoalPos', z_bounds),
+                         (u'DistanceTravelled', (0, 30)),
+                         (u'distanceFromGoal', (0, self.max_dist))]
+        l_bounds = [key[1][0] for key in self.obs_keys]
+        u_bounds = [key[1][1] for key in self.obs_keys]
+
         if self.vision_observation:
             self.observation_space = Box(low=0, high=high,
                                          shape=(self.image_height,
                                                 self.image_width, self.num_frames * self.num_frame_channels))
         else:
-
-            self.obs_keys = [(u'XPos', x_bounds),
-                             (u'ZPos', z_bounds),
-                             (u'yaw', (0, 360)),
-                             (u'XGoalPos', x_bounds),
-                             (u'YGoalPos', z_bounds),
-                             (u'DistanceTravelled', (0, 30)),
-                             (u'distanceFromGoal', (0, self.max_dist))]
-            l_bounds = [key[1][0] for key in self.obs_keys]
-            u_bounds = [key[1][1] for key in self.obs_keys]
             self.observation_space = Box(np.array(l_bounds), np.array(u_bounds))
 
         self.last_obs = None
@@ -440,7 +474,7 @@ class Minecraft(object):
 
     def step(self, action):
         self.total_steps += 1
-        step_info = {}
+        step_info = []
 
         # Reset world state
         self.agent_host.getWorldState()
@@ -461,6 +495,7 @@ class Minecraft(object):
         if world_state.is_mission_running:
             ob, total_reward = self._get_obs(world_state)
             self.last_obs = ob
+            step_info = self._get_gamestate(world_state)[:2]
         else:
             ob = self.last_obs
             total_reward = sum([reward.getValue() for reward in world_state.rewards])
@@ -473,9 +508,6 @@ class Minecraft(object):
 
 
 if __name__ == '__main__':
-    maze = create_maze({'type':sys.argv[1]})
-    mission = MissionGen().generate_mission(maze.create_maze_array(), reset=True)
-    agent = MalmoPython.AgentHost()
-    mission_record_spec = MalmoPython.MissionRecordSpec()
-    agent.startMission(mission, mission_record_spec)
-    print maze.create_maze_array()
+    maze_def = {'type':sys.argv[1]}
+    minecraft = Minecraft(maze_def, reset=True, grayscale=False, vision_observation=True, video_dim=(320, 480))
+    minecraft.reset()

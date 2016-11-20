@@ -197,9 +197,10 @@ class Agent(object):
                               summary_list, summary_writer)
 
         # initialize tf variables
-        self.saver = tf.train.Saver(max_to_keep=1)
+        self.saver = tf.train.Saver(max_to_keep=2)
         ckpt = tf.train.latest_checkpoint(FLAGS.outdir + "/tf")
-        if ckpt:
+        if FLAGS.restore and ckpt:
+            print("Restoring model from %s" %ckpt)
             self.saver.restore(self.sess, ckpt)
         else:
             self.sess.run(tf.initialize_all_variables())
@@ -207,6 +208,7 @@ class Agent(object):
         self.sess.graph.finalize()
 
         self.t = 0  # global training time (number of observations)
+        self.action_data = None
 
     def setup_actor_critic(self, nets, dimO, dimA, obs, obs2, is_training, rew, term2, act_train):
         self.actor = Actor(self.use_conv, nets, dimO, dimA, obs, obs2, is_training,
@@ -225,11 +227,14 @@ class Agent(object):
     def act(self, test=False):
         obs = np.expand_dims(self.observation, axis=0)
         act_action = self.actor.act(obs, test)
+
         if type(act_action) == list:
             action, policy = act_action
-            self.action = policy 
+            self.action = policy
+            self.action_data = policy[0][-FLAGS.num_options:].tolist()
         else:
             action = act_action
+
         action = np.clip(action, -1, 1)
         action = np.atleast_1d(np.squeeze(action, axis=0))  # TODO: remove this hack
         if type(act_action) != list:

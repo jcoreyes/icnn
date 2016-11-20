@@ -7,6 +7,7 @@ import pprint
 import gym
 import numpy as np
 import tensorflow as tf
+from gym import monitoring
 
 import agent
 import sys
@@ -31,6 +32,7 @@ flags.DEFINE_integer('tfseed', 0, 'random seed for tensorflow')
 flags.DEFINE_integer('gymseed', 0, 'random seed for openai gym')
 flags.DEFINE_integer('npseed', 0, 'random seed for numpy')
 flags.DEFINE_boolean('summary', True, 'where to do tensorboard summmary')
+flags.DEFINE_boolean('restore', False, 'whether to try loading from checkpoint')
 
 # Option specific
 flags.DEFINE_integer('num_options', 2, 'Only applies to DDPGOptions.')
@@ -104,10 +106,6 @@ class Experiment(object):
             avg_rewards.append(avg_reward)
             print('Average test return {} after {} timestep of training.'.format(avg_reward, self.train_timestep))
             #print >> simple_log_file, "{}\t{}\t{}\t{}\t{}".format(self.train_timestep, avg_reward, np.std(reward_list), np.min(reward_list), np.max(reward_list))
-            # Stopping criterion
-            if self.train_timestep > 5e5 and len(avg_rewards) > 10 and np.var(avg_rewards) < 1:
-                break
-
 
             # train
             train_reward_list = []
@@ -122,6 +120,9 @@ class Experiment(object):
                                                                     train_avg_reward))
             simple_log_file.flush()
 
+            if not os.path.exists(FLAGS.outdir + "/tf"):
+                os.mkdir(FLAGS.outdir + "/tf")
+            self.agent.saver.save(self.agent.sess, FLAGS.outdir + "/tf/train_%d_model.ckpt" % self.train_timestep)
         #self.env.monitor.close()
 
     def run_episode(self, test=True, monitor=False):
@@ -131,6 +132,7 @@ class Experiment(object):
         sum_reward = 0
         timestep = 0
         term = False
+        action_info = []
         while not term:
             action = self.agent.act(test=test)
 
@@ -143,6 +145,15 @@ class Experiment(object):
             sum_reward += reward
             timestep += 1
 
+            if hasattr(self.agent, 'action_data'):
+                # action data must be list of floats. info must be list of floats
+                str_action_info = ['%.4f' % x for x in [timestep] + info + self.agent.action_data]
+                action_info.append(','.join(str_action_info))
+        if len(action_info) > 0:
+            action_info_file = FLAGS.outdir + '/action_data.txt'
+            episode_action_info = '\t'.join(action_info)
+            with open(action_info_file, 'a') as f:
+                f.write('{}\t{}\n'.format(self.train_timestep, episode_action_info))
         return sum_reward, timestep
 
 
